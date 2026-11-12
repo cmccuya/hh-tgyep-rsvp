@@ -1,11 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
-import { Countdown } from "@/components/countdown";
+import { useEffect, useState } from "react";
+import { CarolFrame, useCarol } from "@/components/music";
 import { RsvpForm } from "@/components/rsvp-form";
-import { Snow } from "@/components/snow";
-import { Chime } from "@/lib/chime";
 import { event } from "@/lib/event";
 
 type View = "cover" | "party" | "rsvp";
@@ -18,167 +16,142 @@ function viewFromHash(): View {
 
 export function Invitation() {
   const [view, setView] = useState<View>("cover");
-  const [musicOn, setMusicOn] = useState(false);
-  const chime = useRef<Chime | null>(null);
+  const carol = useCarol();
 
   useEffect(() => {
     const apply = () => setView(viewFromHash());
     apply();
     window.addEventListener("hashchange", apply);
-    return () => {
-      window.removeEventListener("hashchange", apply);
-      chime.current?.stop();
-    };
+    return () => window.removeEventListener("hashchange", apply);
   }, []);
-
-  async function play() {
-    if (!chime.current) chime.current = new Chime();
-    await chime.current.start();
-    setMusicOn(true);
-  }
-
-  function pause() {
-    chime.current?.stop();
-    setMusicOn(false);
-  }
-
-  async function openCard() {
-    window.location.hash = "#party";
-    window.scrollTo(0, 0);
-    await play();
-  }
 
   function go(next: View) {
     window.location.hash = next === "cover" ? "" : `#${next}`;
     window.scrollTo(0, 0);
   }
 
+  function openCard() {
+    window.location.hash = "#party";
+    window.scrollTo(0, 0);
+    carol.play();
+  }
+
   return (
-    <div className={view === "cover" ? "stage stage-night" : "stage"}>
-      <Snow />
+    <div className="stage">
+      <CarolFrame />
       {view !== "cover" ? (
         <button
           type="button"
           className="music"
-          aria-pressed={musicOn}
-          onClick={() => (musicOn ? pause() : play())}
+          aria-pressed={carol.playing}
+          onClick={() => (carol.playing ? carol.pause() : carol.play())}
         >
           <Bell />
-          <span>{musicOn ? "Pause music" : "Play music"}</span>
+          <span>
+            <strong>{carol.playing ? "Pause" : "Play"}</strong>
+            <small>
+              {event.song}
+              <br />
+              {event.artist}
+            </small>
+          </span>
         </button>
       ) : null}
 
       {view === "cover" ? (
         <section className="cover">
-          <p className="eyebrow light">{event.kicker}</p>
-          <h1>
-            Christmas
-            <em> Party</em>
-          </h1>
-          <button type="button" className="postcard" onClick={openCard}>
-            <Image
-              src="/art/tomte.jpg"
-              alt="Watercolor of a white-bearded figure in a red cap carrying gifts through the snow, painted by Jenny Nyström"
-              width={1100}
-              height={1532}
-              priority
-            />
-            <span>Open the card</span>
-          </button>
-          <p className="byline">{event.host}</p>
+          <Image className="cover-bg" src="/art/snow.jpg" alt="" fill priority sizes="100vw" />
+          <div className="cover-inner">
+            <Image className="garland" src="/art/garland.png" alt="" width={1000} height={558} priority />
+            <p className="eyebrow light">You&apos;re invited</p>
+            <h1>{event.host}</h1>
+            <p className="cover-title">{event.title}</p>
+            <button type="button" className="mailbox" onClick={openCard}>
+              <Image src="/art/mailbox.png" alt="" width={900} height={900} priority />
+              <span>Open the invitation</span>
+            </button>
+          </div>
         </section>
       ) : null}
 
       {view === "party" ? (
         <article className="sheet rise">
-          <figure className="hero">
-            <Image
-              src="/art/sleigh.jpg"
-              alt="Watercolor of a horse-drawn sleigh crossing the snow toward a lit church, painted by Jenny Nyström"
-              width={1200}
-              height={1494}
-              priority
-            />
-          </figure>
+          <Image className="garland" src="/art/garland.png" alt="" width={1000} height={558} />
 
-          <header className="intro">
-            <p className="eyebrow">{event.merry}</p>
-            <h1>
-              Christmas
-              <em> Party</em>
-            </h1>
-            <p className="hosted">
-              Hosted by <strong>{event.host}</strong>
-            </p>
-            <p className="when">{event.dateLine}</p>
-            <p className="quiet">{event.dateDetail}</p>
-            <address>
-              {event.street}
-              <br />
-              {event.city}
-            </address>
-            <a
-              className="btn btn-berry"
-              href={event.mapUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+          <div className="frame frame-bow">
+            <Image src="/art/bow.png" alt="" width={1000} height={1339} />
+            <div className="frame-copy">
+              <p className="eyebrow">{event.host}</p>
+              <h1>{event.title}</h1>
+              <p>{event.welcome}</p>
+            </div>
+          </div>
+
+          <div className="plaque">
+            <Image src="/art/plaque.png" alt="" width={1000} height={558} />
+            <div className="plaque-copy">
+              <p>{event.dateLabel}</p>
+              <strong>{event.dateValue}</strong>
+            </div>
+          </div>
+          <p className="note">{event.dateNote}</p>
+
+          <section className="block">
+            <h2>{event.placeLabel}</h2>
+            <p className="place">{event.place}</p>
+            <p className="quiet">{event.placeDetail}</p>
+            <a className="btn btn-berry" href={event.mapUrl} target="_blank" rel="noopener noreferrer">
               Check location
             </a>
-          </header>
+          </section>
 
-          <section className="plate">
-            <Image
-              src="/art/birds.jpg"
-              alt="Watercolor of two children at a snowy fence, feeding birds, painted by Jenny Nyström"
-              width={1100}
-              height={1596}
-            />
+          <Image className="ornament tree" src="/art/tree.png" alt="Watercolor Christmas tree with wrapped gifts" width={900} height={900} />
+
+          <section className="block">
+            <h2>{event.foodLabel}</h2>
+            <p>{event.food}</p>
+          </section>
+
+          <section className="block">
+            <h2>{event.giftLabel}</h2>
+            <p>{event.gift}</p>
+          </section>
+
+          <Image
+            className="ornament sleigh"
+            src="/art/sleigh.png"
+            alt="Watercolor of Santa in a sleigh pulled by a reindeer"
+            width={900}
+            height={900}
+          />
+
+          <section className="games">
+            <Image src="/art/nutcracker.png" alt="Watercolor nutcracker" width={900} height={1205} />
             <div>
-              <h2>Attire</h2>
-              <p>{event.attire}</p>
+              <h2>{event.gamesLabel}</h2>
+              <p>{event.games}</p>
             </div>
           </section>
 
-          <section className="plate plate-flip">
-            <Image
-              src="/art/supper.jpg"
-              alt="Watercolor of a candlelit holiday supper indoors, painted by Jenny Nyström"
-              width={1100}
-              height={1676}
-            />
-            <div>
-              <h2>Food</h2>
-              <p>{event.food}</p>
+          <div className="frame frame-scallop">
+            <Image src="/art/scallop.png" alt="" width={1000} height={1339} />
+            <div className="frame-copy">
+              <h2>{event.inputLabel}</h2>
+              <p>{event.input}</p>
             </div>
-          </section>
-
-          <section className="plate">
-            <Image
-              src="/art/lanterns.jpg"
-              alt="Watercolor of two children walking through falling snow with candles, painted by Jenny Nyström"
-              width={1100}
-              height={1672}
-            />
-            <div>
-              <h2>What to bring</h2>
-              <p>{event.bring}</p>
-            </div>
-          </section>
-
-          <Countdown />
+          </div>
 
           <div className="rsvp-cta">
-            <p className="script">{event.rsvpHeading}</p>
+            <Image src="/art/envelope.png" alt="" width={900} height={900} />
+            <p className="script">{event.rsvp}</p>
             <button type="button" className="btn btn-berry" onClick={() => go("rsvp")}>
-              Rsvp before November 20
+              Send your reply
             </button>
           </div>
 
           <footer>
             <p>
-              Paintings by Jenny Nyström (1854–1946), public domain, from Wikimedia
-              Commons. The bell music is an original pattern written for this card.
+              {event.song} is performed by {event.artist} and plays from the official video.
             </p>
           </footer>
         </article>

@@ -16,9 +16,9 @@ const body = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "A Very Merry Christmas Party",
+  title: "Hamana Homes Thanksgiving & Year-End Party",
   description:
-    "The Parker family invites you to Christmas dinner on December 22 at 5 PM, 125 Willow Lane, Rosewood.",
+    "Hamana Homes invites every household to the Thanksgiving and year-end party at the Club House. The date is still to be decided.",
 };
 
 export default function RootLayout({

@@ -1,18 +1,12 @@
-# Hearthlight
+# Hamana Homes party invitation
 
-An interactive Christmas invitation for the Parker family. Guests open a painted card, then read the party details, play a short original bell pattern, follow the address on a map, watch the countdown, and leave an RSVP on their own phone.
+An interactive invitation for the Hamana Homes Thanksgiving and year-end party. Guests open the card, read the plans, play Brenda Lee’s “Rockin’ Around the Christmas Tree” from the official video, open the club house on a map, and leave a household reply.
 
-The party details:
+The date is still to be decided. A poll line on the card says one is coming.
 
-- A very merry Christmas Party, hosted by The Parker Family
-- December 22, 2026, 5:00 PM Pacific
-- 125 Willow Lane, Rosewood, CA 90210
-- Attire, dinner, and what to bring, as written on the card
-- RSVP before November 20
+Replies stay in the browser that submitted them. They are not sent to a shared guest list.
 
-The pictures are watercolors by Jenny Nyström (1854–1946). They are public domain and come from Wikimedia Commons. The bell music is written for this card. It is not a recording of a published song.
-
-An RSVP is saved in the browser that submitted it. It is not sent to a shared guest list.
+The pictures are the watercolor set supplied for this card. The song is not stored in this project. The play button streams Brenda Lee’s official YouTube video.
 
 ## Run it locally
 

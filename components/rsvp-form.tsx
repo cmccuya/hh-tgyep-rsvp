@@ -1,25 +1,22 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
-import { event } from "@/lib/event";
 
-const STORAGE_KEY = "hearthlight-rsvp";
+const STORAGE_KEY = "hamana-homes-rsvp";
 
 type Coming = "yes" | "no" | "";
 
 type Reply = {
   name: string;
+  blockLot: string;
   coming: Exclude<Coming, "">;
-  phone: string;
   guests: string;
+  potluck: string;
+  suggestions: string;
 };
 
-type Errors = {
-  name?: string;
-  coming?: string;
-  phone?: string;
-  guests?: string;
-};
+type Errors = Partial<Record<"name" | "blockLot" | "coming" | "guests", string>>;
 
 function readReply(): Reply | null {
   try {
@@ -37,9 +34,11 @@ function readReply(): Reply | null {
 
 export function RsvpForm({ onBack }: { onBack: () => void }) {
   const [name, setName] = useState("");
+  const [blockLot, setBlockLot] = useState("");
   const [coming, setComing] = useState<Coming>("");
-  const [phone, setPhone] = useState("");
   const [guests, setGuests] = useState("");
+  const [potluck, setPotluck] = useState("");
+  const [suggestions, setSuggestions] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [saved, setSaved] = useState<Reply | null>(null);
   const [ready, setReady] = useState(false);
@@ -53,30 +52,34 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
   function validate(): Errors {
     const next: Errors = {};
     if (!name.trim()) next.name = "Please tell us your name.";
-    if (!coming) next.coming = "Let us know if you can come.";
-    const digits = phone.replace(/\D/g, "");
-    if (phone.trim() && digits.length < 7) {
-      next.phone = "That number looks short. Add the full phone number, or leave it blank.";
-    }
-    if (guests.trim()) {
+    if (!blockLot.trim()) next.blockLot = "Add your block and lot so we know which home.";
+    if (!coming) next.coming = "Let us know if your household can join.";
+    if (coming === "yes") {
+      const count = Number(guests);
+      if (!guests.trim() || !Number.isInteger(count) || count < 1 || count > 30) {
+        next.guests = "Enter how many people are in your family, from 1 to 30.";
+      }
+    } else if (guests.trim()) {
       const count = Number(guests);
       if (!Number.isInteger(count) || count < 1 || count > 30) {
-        next.guests = "Enter a number of guests from 1 to 30.";
+        next.guests = "Enter a number from 1 to 30, or leave this blank.";
       }
     }
     return next;
   }
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
     const next = validate();
     setErrors(next);
     if (Object.keys(next).length || !coming) return;
     const reply: Reply = {
       name: name.trim(),
+      blockLot: blockLot.trim(),
       coming,
-      phone: phone.trim(),
       guests: guests.trim(),
+      potluck: potluck.trim(),
+      suggestions: suggestions.trim(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(reply));
     setSaved(reply);
@@ -85,9 +88,11 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
   function edit() {
     if (!saved) return;
     setName(saved.name);
+    setBlockLot(saved.blockLot);
     setComing(saved.coming);
-    setPhone(saved.phone);
     setGuests(saved.guests);
+    setPotluck(saved.potluck);
+    setSuggestions(saved.suggestions);
     setSaved(null);
     setErrors({});
   }
@@ -101,21 +106,22 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
   }
 
   if (saved) {
-    const comingYes = saved.coming === "yes";
+    const joining = saved.coming === "yes";
     return (
       <div className="sheet rsvp-sheet">
-        <p className="eyebrow">Rsvp</p>
-        <h2>{comingYes ? "We'll save you a seat." : "We'll miss you."}</h2>
+        <Image className="seal" src="/art/envelope.png" alt="" width={900} height={900} />
+        <p className="eyebrow">Reply received</p>
+        <h2>{joining ? "We’ll save your household a place." : "We’ll miss you."}</h2>
         <p className="lede">
-          {comingYes
-            ? `${saved.name}, the Parker family has your yes${
-                saved.guests ? ` for ${saved.guests} ${saved.guests === "1" ? "guest" : "guests"}` : ""
+          {joining
+            ? `${saved.name}, block ${saved.blockLot}, is joyfully coming${
+                saved.guests ? ` with ${saved.guests} in the family` : ""
               }.`
-            : `${saved.name}, thank you for telling us.`}
+            : `${saved.name}, from block ${saved.blockLot}, regretfully declines. Thank you for telling us.`}
         </p>
-        <p className="quiet">
-          This reply stays on this phone. It is not sent to a shared guest list.
-        </p>
+        {saved.potluck ? <p className="quiet">Potluck note: {saved.potluck}</p> : null}
+        {saved.suggestions ? <p className="quiet">Suggestion: {saved.suggestions}</p> : null}
+        <p className="quiet">This reply stays on this phone. It is not sent to a shared list.</p>
         <div className="row-actions">
           <button type="button" className="btn btn-ink" onClick={edit}>
             Change my reply
@@ -130,9 +136,9 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
 
   return (
     <form className="sheet rsvp-sheet" onSubmit={onSubmit} noValidate>
-      <p className="eyebrow script">Rsvp</p>
-      <h2>{event.rsvpBy}</h2>
-      <p className="quiet">The Parker family would love to know.</p>
+      <Image className="seal" src="/art/envelope.png" alt="" width={900} height={900} />
+      <p className="eyebrow">Reply card</p>
+      <h2>Will your household join us?</h2>
 
       <label className="field">
         <span>Your name*</span>
@@ -145,9 +151,20 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
         {errors.name ? <em>{errors.name}</em> : null}
       </label>
 
+      <label className="field">
+        <span>Block and lot*</span>
+        <input
+          value={blockLot}
+          onChange={(e) => setBlockLot(e.target.value)}
+          aria-invalid={Boolean(errors.blockLot)}
+          placeholder="Block 3, Lot 12"
+        />
+        {errors.blockLot ? <em>{errors.blockLot}</em> : null}
+      </label>
+
       <fieldset>
-        <legend>Are you coming?*</legend>
-        <div role="radiogroup" aria-label="Are you coming?" className="choices">
+        <legend>Will you join us?*</legend>
+        <div role="radiogroup" aria-label="Will you join us?" className="choices">
           <button
             type="button"
             role="radio"
@@ -155,7 +172,7 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
             className={coming === "yes" ? "choice on" : "choice"}
             onClick={() => setComing("yes")}
           >
-            Yes! I&apos;ll be there
+            Joyfully Accepts
           </button>
           <button
             type="button"
@@ -164,28 +181,15 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
             className={coming === "no" ? "choice on" : "choice"}
             onClick={() => setComing("no")}
           >
-            Can&apos;t make it this time
+            Regretfully Declines
           </button>
         </div>
         {errors.coming ? <em className="field-error">{errors.coming}</em> : null}
       </fieldset>
 
       <label className="field">
-        <span>
-          Please share your phone number so we can reach out with updates if needed
-        </span>
-        <input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          inputMode="tel"
-          autoComplete="tel"
-          aria-invalid={Boolean(errors.phone)}
-        />
-        {errors.phone ? <em>{errors.phone}</em> : null}
-      </label>
-
-      <label className="field">
         <span>Number of guests</span>
+        <small>How many in your family</small>
         <input
           value={guests}
           onChange={(e) => setGuests(e.target.value.replace(/[^\d]/g, ""))}
@@ -193,6 +197,26 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
           aria-invalid={Boolean(errors.guests)}
         />
         {errors.guests ? <em>{errors.guests}</em> : null}
+      </label>
+
+      <label className="field">
+        <span>Potluck contributions</span>
+        <textarea
+          value={potluck}
+          onChange={(e) => setPotluck(e.target.value)}
+          rows={3}
+          placeholder="A dish, a drink, or a dessert"
+        />
+      </label>
+
+      <label className="field">
+        <span>Suggestions</span>
+        <small>Themes, games, or activities</small>
+        <textarea
+          value={suggestions}
+          onChange={(e) => setSuggestions(e.target.value)}
+          rows={3}
+        />
       </label>
 
       <div className="row-actions">
