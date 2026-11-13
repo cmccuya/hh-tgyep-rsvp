@@ -539,9 +539,9 @@ input, textarea {
 
 .stamps {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.35rem;
-  align-items: start;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.2rem;
+  align-items: center;
 }
 
 .stamp {
@@ -562,7 +562,22 @@ input, textarea {
   transition: transform 0.28s ease;
 }
 
+.stamp::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -8% -4% -6%;
+  border-radius: 46%;
+  background: radial-gradient(ellipse at center, rgba(255, 176, 64, 0) 34%, rgba(255, 186, 70, 0.95) 52%, rgba(255, 214, 140, 0) 74%);
+  opacity: 0;
+  filter: blur(8px);
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+
 .stamp-art {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: auto;
@@ -604,10 +619,24 @@ input, textarea {
   transform: translateY(-6px) scale(1.03);
 }
 
+.stamp-yes:hover::before,
+.stamp-yes.on:hover::before,
+.stamp-yes.on::before {
+  opacity: 1;
+}
+
 .stamp-yes:hover .stamp-art,
 .stamp-yes.on:hover .stamp-art,
 .stamp-yes.on .stamp-art {
-  filter: drop-shadow(0 16px 18px rgba(150, 100, 40, 0.28)) brightness(1.04);
+  filter:
+    drop-shadow(0 0 10px rgba(255, 168, 48, 1))
+    drop-shadow(0 0 26px rgba(255, 186, 72, 0.95))
+    drop-shadow(0 18px 14px rgba(70, 46, 22, 0.38))
+    brightness(1.06);
+}
+
+.stamp-no::before {
+  background: radial-gradient(ellipse at center, rgba(150, 190, 214, 0) 34%, rgba(168, 206, 226, 0.95) 52%, rgba(190, 216, 230, 0) 74%);
 }
 
 .stamp-no:hover,
@@ -615,10 +644,20 @@ input, textarea {
   transform: translateY(3px) rotate(-1.5deg) scale(0.98);
 }
 
+.stamp-no:hover::before,
+.stamp-no.on:hover::before,
+.stamp-no.on::before {
+  opacity: 1;
+}
+
 .stamp-no:hover .stamp-art,
 .stamp-no.on:hover .stamp-art,
 .stamp-no.on .stamp-art {
-  filter: drop-shadow(0 16px 18px rgba(70, 100, 120, 0.26)) brightness(1.03);
+  filter:
+    drop-shadow(0 0 10px rgba(150, 196, 220, 1))
+    drop-shadow(0 0 26px rgba(176, 210, 228, 0.95))
+    drop-shadow(0 18px 14px rgba(48, 70, 88, 0.36))
+    brightness(1.05);
 }
 
 .stamp:focus-visible {
