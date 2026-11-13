@@ -43,20 +43,30 @@ export function WriteIn({
   delay?: number;
   active?: boolean;
 }) {
+  const words = text.split(/\s+/).filter(Boolean);
+  let letter = 0;
   return (
     <span aria-hidden="true">
-      {Array.from(text).map((char, index) => (
-        <span
-          key={`${char}-${index}`}
-          className="write-ch"
-          style={{
-            animationDelay: `${delay + index * 35}ms`,
-            animationPlayState: active ? "running" : "paused",
-          }}
-        >
-          {char === " " ? "\u00A0" : char}
-        </span>
-      ))}
+      {words.map((word, wordIndex) => {
+        const start = letter;
+        letter += word.length + 1;
+        return (
+          <span key={`${word}-${wordIndex}`} className="write-word">
+            {Array.from(word).map((char, index) => (
+              <span
+                key={`${char}-${start + index}`}
+                className="write-ch"
+                style={{
+                  animationDelay: `${delay + (start + index) * 35}ms`,
+                  animationPlayState: active ? "running" : "paused",
+                }}
+              >
+                {char}
+              </span>
+            ))}
+          </span>
+        );
+      })}
     </span>
   );
 }

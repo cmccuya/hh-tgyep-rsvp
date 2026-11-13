@@ -97,6 +97,8 @@ img { max-width: 100%; height: auto; }
   font-family: var(--font-display), Georgia, serif;
   font-style: italic;
   font-size: clamp(1.35rem, 4.5vw, 1.8rem);
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .eyebrow {
@@ -228,6 +230,15 @@ textarea:focus-visible {
   to { opacity: 0; transform: translateY(-16px); }
 }
 
+.write-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.write-word + .write-word {
+  margin-left: 0.28em;
+}
+
 .write-ch, .rise-word {
   display: inline-block;
   opacity: 0;
@@ -256,7 +267,12 @@ textarea:focus-visible {
 .frame-bow .frame-copy { inset: 24% 18% 16%; padding: 0.4rem 0.35rem; }
 .frame-scallop .frame-copy { inset: 20% 20% 18%; padding: 0.5rem 0.45rem; }
 
-.frame-copy h1 { font-size: clamp(1.85rem, 6vw, 2.45rem); line-height: 1.05; }
+.frame-copy h1 {
+  font-size: clamp(1.85rem, 6vw, 2.45rem);
+  line-height: 1.05;
+  overflow-wrap: normal;
+  word-break: normal;
+}
 .frame-copy p { max-width: 26rem; }
 .frame-copy p, .block p, .games p, .lede {
   margin: 0.45rem 0 0;

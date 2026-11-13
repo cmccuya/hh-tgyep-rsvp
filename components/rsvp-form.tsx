@@ -3,35 +3,11 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { RiseIn, WriteIn, letterDelay } from "@/components/motion";
-
-const STORAGE_KEY = "hamana-homes-rsvp";
+import { readReply, shareReply, type Reply } from "@/lib/reply";
 
 type Coming = "yes" | "no" | "";
 
-type Reply = {
-  name: string;
-  blockLot: string;
-  coming: Exclude<Coming, "">;
-  guests: string;
-  potluck: string;
-  suggestions: string;
-};
-
 type Errors = Partial<Record<"name" | "blockLot" | "coming" | "guests", string>>;
-
-function readReply(): Reply | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Reply;
-    if (!parsed?.name || (parsed.coming !== "yes" && parsed.coming !== "no")) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-}
 
 export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: ReactNode }) {
   const [name, setName] = useState("");
@@ -42,11 +18,17 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
   const [suggestions, setSuggestions] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [saved, setSaved] = useState<Reply | null>(null);
+  const [identity, setIdentity] = useState({ guestId: "", createdAt: "" });
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const existing = readReply();
-    if (existing) setSaved(existing);
+    if (existing) {
+      setSaved(existing);
+      setIdentity({ guestId: existing.guestId, createdAt: existing.createdAt });
+    }
     setReady(true);
   }, []);
 
@@ -69,12 +51,17 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
     return next;
   }
 
-  function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const next = validate();
     setErrors(next);
+    setSaveError("");
     if (Object.keys(next).length || !coming) return;
+    const now = new Date().toISOString();
     const reply: Reply = {
+      guestId: identity.guestId || crypto.randomUUID(),
+      createdAt: identity.createdAt || now,
+      updatedAt: now,
       name: name.trim(),
       blockLot: blockLot.trim(),
       coming,
@@ -82,8 +69,16 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
       potluck: potluck.trim(),
       suggestions: suggestions.trim(),
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(reply));
-    setSaved(reply);
+    setIdentity({ guestId: reply.guestId, createdAt: reply.createdAt });
+    setSaving(true);
+    try {
+      await shareReply(reply);
+      setSaved(reply);
+    } catch {
+      setSaveError("We kept this reply on your phone, but it did not reach the shared list. Please submit again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function edit() {
@@ -94,8 +89,10 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
     setGuests(saved.guests);
     setPotluck(saved.potluck);
     setSuggestions(saved.suggestions);
+    setIdentity({ guestId: saved.guestId, createdAt: saved.createdAt });
     setSaved(null);
     setErrors({});
+    setSaveError("");
   }
 
   if (!ready) {
@@ -128,7 +125,11 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
         </p>
         {saved.potluck ? <p className="quiet">Potluck note: {saved.potluck}</p> : null}
         {saved.suggestions ? <p className="quiet">Suggestion: {saved.suggestions}</p> : null}
-        <p className="quiet">This reply stays on this phone. It is not sent to a shared list.</p>
+        <p className="quiet">
+          {process.env.NEXT_PUBLIC_RSVP_URL
+            ? "Your household has one saved reply. Changing it updates that same reply."
+            : "This reply stays on this phone. It is not sent to a shared list yet."}
+        </p>
         <div className="row-actions">
           <button type="button" className="btn btn-ink" onClick={edit}>
             Change my reply
@@ -232,8 +233,9 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
       </label>
 
       <div className="row-actions">
-        <button type="submit" className="btn btn-ink">
-          Submit
+        {saveError ? <p className="field-error">{saveError}</p> : null}
+        <button type="submit" className="btn btn-ink" disabled={saving}>
+          {saving ? "Saving…" : "Submit"}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onBack}>
           Back to the party
