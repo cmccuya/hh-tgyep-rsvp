@@ -498,6 +498,20 @@ textarea:focus-visible {
   padding-top: 4.5rem;
 }
 
+.rsvp-saved {
+  text-align: center;
+}
+
+.rsvp-saved .lede,
+.rsvp-saved .quiet {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.rsvp-saved .row-actions {
+  justify-content: center;
+}
+
 .seal { display: block; margin: 0.2rem auto 0; }
 
 .field, fieldset {

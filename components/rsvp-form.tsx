@@ -108,7 +108,7 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
   if (saved) {
     const joining = saved.coming === "yes";
     return (
-      <div className="sheet rsvp-sheet">
+      <div className="sheet rsvp-sheet rsvp-saved">
         {toolbar}
         <Image className="seal" src="/art/envelope.png" alt="" width={900} height={900} />
         <p className="eyebrow" aria-label="Reply received">
