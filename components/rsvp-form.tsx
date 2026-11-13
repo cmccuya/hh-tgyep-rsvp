@@ -42,13 +42,20 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
       if (!guests.trim() || !Number.isInteger(count) || count < 1 || count > 30) {
         next.guests = "Enter how many people are in your family, from 1 to 30.";
       }
-    } else if (guests.trim()) {
-      const count = Number(guests);
-      if (!Number.isInteger(count) || count < 1 || count > 30) {
-        next.guests = "Enter a number from 1 to 30, or leave this blank.";
-      }
     }
     return next;
+  }
+
+  function choose(next: Coming) {
+    setComing(next);
+    if (next === "yes" && !guests.trim()) setGuests("1");
+    setErrors((current) => ({ ...current, coming: undefined, guests: next === "yes" ? current.guests : undefined }));
+  }
+
+  function stepGuests(delta: number) {
+    const count = Number(guests);
+    const base = Number.isInteger(count) && count >= 1 ? count : 1;
+    setGuests(String(Math.min(30, Math.max(1, base + delta))));
   }
 
   async function onSubmit(event: FormEvent) {
@@ -65,8 +72,8 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
       name: name.trim(),
       blockLot: blockLot.trim(),
       coming,
-      guests: guests.trim(),
-      potluck: potluck.trim(),
+      guests: coming === "yes" ? guests.trim() : "",
+      potluck: coming === "yes" ? potluck.trim() : "",
       suggestions: suggestions.trim(),
     };
     setIdentity({ guestId: reply.guestId, createdAt: reply.createdAt });
@@ -178,50 +185,73 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
 
       <fieldset>
         <legend>Will you join us?*</legend>
-        <div role="radiogroup" aria-label="Will you join us?" className="choices">
+        <div role="radiogroup" aria-label="Will you join us?" className="stamps">
           <button
             type="button"
             role="radio"
             aria-checked={coming === "yes"}
-            className={coming === "yes" ? "choice on" : "choice"}
-            onClick={() => setComing("yes")}
+            className={coming === "yes" ? "stamp stamp-yes on" : "stamp stamp-yes"}
+            onClick={() => choose("yes")}
           >
-            Joyfully Accepts
+            <span className="stamp-spark" aria-hidden="true">
+              <i /><i /><i /><i /><i /><i />
+            </span>
+            <span className="stamp-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.8 14.4 8.6h7.1l-5.7 4.2 2.2 6.8L12 15.6 6 19.6l2.2-6.8L2.5 8.6h7.1z" /></svg>
+              <svg viewBox="0 0 36 18"><circle cx="8" cy="9" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="28" cy="9" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M13.2 9h9.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+            </span>
+            <strong>Joyfully Accepts</strong>
+            <small>Count us in!</small>
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={coming === "no"}
-            className={coming === "no" ? "choice on" : "choice"}
-            onClick={() => setComing("no")}
+            className={coming === "no" ? "stamp stamp-no on" : "stamp stamp-no"}
+            onClick={() => choose("no")}
           >
-            Regretfully Declines
+            <span className="flake" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" d="M12 2.5v19M12 5.2 9.6 3M12 5.2l2.4-2.2M12 18.8 9.6 21M12 18.8l2.4 2.2M4.2 7.2l15.6 9.6M6.2 6.4 4.4 4.2M6.2 6.4l2.6.2M17.8 17.6l1.8 2.2M17.8 17.6l-2.6-.2M19.8 7.2 4.2 16.8M17.8 6.4l1.8-2.2M17.8 6.4l-2.6.2M6.2 17.6 4.4 19.8M6.2 17.6l2.6-.2" /></svg>
+            </span>
+            <span className="stamp-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" d="M12 2.5v19M12 5.2 9.6 3M12 5.2l2.4-2.2M12 18.8 9.6 21M12 18.8l2.4 2.2M4.2 7.2l15.6 9.6M6.2 6.4 4.4 4.2M6.2 6.4l2.6.2M17.8 17.6l1.8 2.2M17.8 17.6l-2.6-.2M19.8 7.2 4.2 16.8M17.8 6.4l1.8-2.2M17.8 6.4l-2.6.2M6.2 17.6 4.4 19.8M6.2 17.6l2.6-.2" /></svg>
+            </span>
+            <strong>Regretfully Declines</strong>
+            <small>Will miss the fun</small>
+            <em className="stamp-note" aria-hidden="true">We'll miss you at the party! 🥺</em>
           </button>
         </div>
         {errors.coming ? <em className="field-error">{errors.coming}</em> : null}
       </fieldset>
 
-      <label className="field">
-        <span>Number of guests</span>
-        <small>How many in your family</small>
-        <input
-          value={guests}
-          onChange={(e) => setGuests(e.target.value.replace(/[^\d]/g, ""))}
-          inputMode="numeric"
-          aria-invalid={Boolean(errors.guests)}
-        />
-        {errors.guests ? <em>{errors.guests}</em> : null}
-      </label>
+      <div className={coming === "yes" ? "party-details open" : "party-details"} inert={coming === "yes" ? undefined : true}>
+        <div className="party-details-inner">
+          <div className="field">
+            <span id="guest-count-label">Number of guests</span>
+            <small>How many in your family</small>
+            <div className="stepper" role="group" aria-labelledby="guest-count-label">
+              <button type="button" className="step" aria-label="Fewer guests" onClick={() => stepGuests(-1)} disabled={Number(guests) <= 1}>
+                −
+              </button>
+              <output aria-live="polite">{guests || "1"}</output>
+              <button type="button" className="step" aria-label="More guests" onClick={() => stepGuests(1)} disabled={Number(guests) >= 30}>
+                +
+              </button>
+            </div>
+            {errors.guests ? <em>{errors.guests}</em> : null}
+          </div>
 
-      <label className="field">
-        <span>Potluck contributions</span>
-        <textarea
-          value={potluck}
-          onChange={(e) => setPotluck(e.target.value)}
-          rows={3}
-          placeholder="A dish, a drink, or a dessert"
-        />
-      </label>
+          <label className="field">
+            <span>Potluck contributions</span>
+            <textarea
+              value={potluck}
+              onChange={(e) => setPotluck(e.target.value)}
+              rows={3}
+              placeholder="A dish, a drink, or a dessert"
+            />
+          </label>
+        </div>
+      </div>
 
       <label className="field">
         <span>Suggestions</span>
