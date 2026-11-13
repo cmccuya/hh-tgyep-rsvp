@@ -568,7 +568,7 @@ input, textarea {
   z-index: 0;
   inset: -8% -4% -6%;
   border-radius: 46%;
-  background: radial-gradient(ellipse at center, rgba(255, 176, 64, 0) 34%, rgba(255, 186, 70, 0.95) 52%, rgba(255, 214, 140, 0) 74%);
+  background: radial-gradient(ellipse at center, rgba(255, 214, 150, 0) 42%, rgba(255, 220, 170, 0.45) 60%, rgba(255, 230, 190, 0) 78%);
   opacity: 0;
   filter: blur(8px);
   pointer-events: none;
@@ -616,57 +616,45 @@ input, textarea {
 
 .stamp-yes {
   z-index: 1;
-  transform: scale(1.34);
+  transform: scale(1.1);
 }
 
-.stamp-yes:hover,
-.stamp-yes.on:hover {
-  transform: translateY(-6px) scale(1.4);
+.stamp-yes:hover {
+  transform: translateY(-6px) scale(1.14);
 }
 
-.stamp-yes:hover::before,
-.stamp-yes.on:hover::before,
-.stamp-yes.on::before {
-  opacity: 1;
+.stamp-yes:hover::before {
+  opacity: 0.65;
 }
 
-.stamp-yes:hover .stamp-art,
-.stamp-yes.on:hover .stamp-art,
-.stamp-yes.on .stamp-art {
+.stamp-yes:hover .stamp-art {
   filter:
-    drop-shadow(0 0 10px rgba(255, 168, 48, 1))
-    drop-shadow(0 0 26px rgba(255, 186, 72, 0.95))
-    drop-shadow(0 18px 14px rgba(70, 46, 22, 0.38))
-    brightness(1.06);
+    drop-shadow(0 0 14px rgba(255, 214, 150, 0.55))
+    drop-shadow(0 10px 12px rgba(90, 60, 30, 0.14))
+    brightness(1.03);
 }
 
 .stamp-no::before {
-  background: radial-gradient(ellipse at center, rgba(150, 190, 214, 0) 34%, rgba(168, 206, 226, 0.95) 52%, rgba(190, 216, 230, 0) 74%);
+  background: radial-gradient(ellipse at center, rgba(180, 210, 224, 0) 42%, rgba(190, 216, 228, 0.45) 60%, rgba(210, 226, 234, 0) 78%);
 }
 
 .stamp-no {
-  transform: scale(0.78);
+  transform: scale(0.9);
 }
 
-.stamp-no:hover,
-.stamp-no.on:hover {
-  transform: translateY(3px) rotate(-1.5deg) scale(0.76);
+.stamp-no:hover {
+  transform: translateY(3px) rotate(-1.5deg) scale(0.88);
 }
 
-.stamp-no:hover::before,
-.stamp-no.on:hover::before,
-.stamp-no.on::before {
-  opacity: 1;
+.stamp-no:hover::before {
+  opacity: 0.65;
 }
 
-.stamp-no:hover .stamp-art,
-.stamp-no.on:hover .stamp-art,
-.stamp-no.on .stamp-art {
+.stamp-no:hover .stamp-art {
   filter:
-    drop-shadow(0 0 10px rgba(150, 196, 220, 1))
-    drop-shadow(0 0 26px rgba(176, 210, 228, 0.95))
-    drop-shadow(0 18px 14px rgba(48, 70, 88, 0.36))
-    brightness(1.05);
+    drop-shadow(0 0 14px rgba(186, 214, 226, 0.55))
+    drop-shadow(0 10px 12px rgba(60, 80, 96, 0.14))
+    brightness(1.03);
 }
 
 .stamp:focus-visible {
@@ -766,9 +754,7 @@ input, textarea {
   }
 
   .stamp-yes,
-  .stamp-yes:hover,
-  .stamp-yes.on:hover { transform: scale(1.34); }
+  .stamp-yes:hover { transform: scale(1.1); }
   .stamp-no,
-  .stamp-no:hover,
-  .stamp-no.on:hover { transform: scale(0.78); }
+  .stamp-no:hover { transform: scale(0.9); }
 }
