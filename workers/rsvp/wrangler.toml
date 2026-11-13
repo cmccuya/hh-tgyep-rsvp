@@ -1,11 +1,11 @@
-name = "hh-tgyep-rsvp"
+name = "hamana-homes"
 main = "src/index.ts"
 compatibility_date = "2026-11-13"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "hh-tgyep-rsvp"
-database_id = "replace-after-d1-create"
+database_name = "hamana-homes"
+database_id = "15ac1ee7-8d0b-416d-a1ce-c542e1453427"
 
 [vars]
 SHEET_TAB = "RSVPs"
