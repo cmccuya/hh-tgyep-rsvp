@@ -23,5 +23,10 @@ CREATE TABLE IF NOT EXISTS visits (
 CREATE TABLE IF NOT EXISTS visit_sessions (
   session_id TEXT PRIMARY KEY,
   ip TEXT NOT NULL,
-  reported_seconds INTEGER NOT NULL DEFAULT 0
+  device TEXT NOT NULL DEFAULT '',
+  browser TEXT NOT NULL DEFAULT '',
+  place TEXT NOT NULL DEFAULT '',
+  reported_seconds INTEGER NOT NULL DEFAULT 0,
+  pages TEXT NOT NULL DEFAULT '',
+  last_seen TEXT NOT NULL DEFAULT ''
 );

@@ -104,67 +104,48 @@ async function recordVisit(request: Request, env: Env) {
   const place = [cf?.city, cf?.region || cf?.country].filter(Boolean).join(", ") || "Unknown";
   const seen = new Date().toISOString();
   const report = await readStay(request);
-  let previous = 0;
-  let isNew = true;
-  if (report.sessionId) {
-    const found = await env.DB.prepare(
-      "SELECT reported_seconds FROM visit_sessions WHERE session_id = ?",
-    )
-      .bind(report.sessionId)
-      .all<{ reported_seconds: number }>();
-    if (found.results[0]) {
-      previous = found.results[0].reported_seconds;
-      isNew = false;
-    }
-    const next = Math.max(previous, report.seconds);
-    await env.DB.prepare(
-      `INSERT INTO visit_sessions (session_id, ip, reported_seconds)
-       VALUES (?, ?, ?)
-       ON CONFLICT(session_id) DO UPDATE SET
-         reported_seconds = excluded.reported_seconds,
-         ip = excluded.ip`,
-    )
-      .bind(report.sessionId, ip, next)
-      .run();
-    report.seconds = next - previous;
-  }
-  const addedVisits = isNew ? 1 : 0;
+  const sessionId = report.sessionId || crypto.randomUUID();
+  const found = await env.DB.prepare(
+    "SELECT reported_seconds, pages FROM visit_sessions WHERE session_id = ?",
+  )
+    .bind(sessionId)
+    .all<{ reported_seconds: number; pages: string }>();
+  const previous = found.results[0]?.reported_seconds ?? 0;
+  const seconds = Math.max(previous, report.seconds);
+  const pages = addPage(found.results[0]?.pages ?? "", report.page);
   await env.DB.prepare(
-    `INSERT INTO visits (ip, device, browser, place, visits, duration_seconds, last_seen)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(ip) DO UPDATE SET
+    `INSERT INTO visit_sessions (session_id, ip, device, browser, place, reported_seconds, pages, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(session_id) DO UPDATE SET
+       reported_seconds = excluded.reported_seconds,
+       pages = excluded.pages,
        device = excluded.device,
        browser = excluded.browser,
        place = excluded.place,
-       visits = visits.visits + ?,
-       duration_seconds = visits.duration_seconds + ?,
        last_seen = excluded.last_seen`,
   )
-    .bind(
-      ip,
-      device,
-      browser,
-      place,
-      addedVisits,
-      report.seconds,
-      seen,
-      addedVisits,
-      report.seconds,
-    )
+    .bind(sessionId, ip, device, browser, place, seconds, pages, seen)
     .run();
   return json({ ok: true });
 }
 
 async function readStay(request: Request) {
   try {
-    const body = JSON.parse(await request.text()) as { sessionId?: unknown; seconds?: unknown };
+    const body = JSON.parse(await request.text()) as { sessionId?: unknown; seconds?: unknown; page?: unknown };
     const sessionId = typeof body.sessionId === "string" ? body.sessionId.slice(0, 80) : "";
     const seconds = Math.min(14400, Math.max(0, Math.round(Number(body.seconds) || 0)));
-    if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return { sessionId: "", seconds: 0 };
-    return { sessionId, seconds };
+    const page = body.page === "Cover" || body.page === "Party" || body.page === "RSVP" ? body.page : "";
+    if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return { sessionId: "", seconds: 0, page };
+    return { sessionId, seconds, page };
   } catch {
-    return { sessionId: "", seconds: 0 };
+    return { sessionId: "", seconds: 0, page: "" };
   }
+}
+
+function addPage(existing: string, page: string) {
+  const pages = existing.split(",").map((item) => item.trim()).filter(Boolean);
+  if (page && !pages.includes(page)) pages.push(page);
+  return pages.join(", ");
 }
 
 function describeAgent(agent: string) {
@@ -189,65 +170,124 @@ function describeAgent(agent: string) {
   return { device, browser };
 }
 
-async function visitLog(request: Request, env: Env, url: URL) {
+async function visitLog(_request: Request, env: Env, url: URL) {
   const key = url.searchParams.get("key") || "";
   if (!env.VISITS_KEY || key !== env.VISITS_KEY) return json({ error: "Not found" }, 404);
   const listed = await env.DB.prepare(
-    "SELECT device, browser, place, ip, visits, duration_seconds, last_seen FROM visits ORDER BY last_seen DESC",
+    "SELECT device, browser, place, ip, reported_seconds, pages, last_seen FROM visit_sessions ORDER BY last_seen DESC",
   ).all<{
     device: string;
     browser: string;
     place: string;
     ip: string;
-    visits: number;
-    duration_seconds: number;
+    reported_seconds: number;
+    pages: string;
     last_seen: string;
   }>();
-  const rows = listed.results
-    .map((visit) => {
-      const when = new Date(visit.last_seen).toLocaleTimeString("en-US", {
-        timeZone: "Asia/Manila",
-        hour: "numeric",
-        minute: "2-digit",
+  const selectedIp = url.searchParams.get("ip");
+  if (selectedIp) {
+    const stays = listed.results.filter((visit) => visit.ip === selectedIp);
+    const title = stays[0] ? `${stays[0].device} · ${stays[0].browser}` : "Visitor";
+    const rows = stays
+      .map((visit, index) => {
+        const when = formatWhen(visit.last_seen);
+        return `<article class="row">
+          <div>
+            <strong>Visit ${stays.length - index}</strong>
+            <p>${escapeHtml(formatStay(visit.reported_seconds || 0))}</p>
+            ${visit.pages ? `<p>Pages: ${escapeHtml(visit.pages)}</p>` : ""}
+          </div>
+          <time>${escapeHtml(when)}</time>
+        </article>`;
+      })
+      .join("");
+    return page(
+      "Hamana Homes Visitor",
+      `<p class="back"><a href="/visits?key=${encodeURIComponent(key)}">Back to visitor logs</a></p>
+       <h1>${escapeHtml(title)}</h1>
+       <p class="quiet">${escapeHtml(stays[0]?.place || "Unknown place")}</p>
+       <p class="quiet">IP: ${escapeHtml(selectedIp)}</p>
+       ${rows || '<p class="empty">No visits for this address.</p>'}`,
+    );
+  }
+
+  const visitors = new Map<string, {
+    device: string;
+    browser: string;
+    place: string;
+    ip: string;
+    visits: number;
+    last_seen: string;
+  }>();
+  for (const visit of listed.results) {
+    const current = visitors.get(visit.ip);
+    if (!current) {
+      visitors.set(visit.ip, {
+        device: visit.device,
+        browser: visit.browser,
+        place: visit.place,
+        ip: visit.ip,
+        visits: 1,
+        last_seen: visit.last_seen,
       });
+    } else {
+      current.visits += 1;
+    }
+  }
+  const rows = [...visitors.values()]
+    .map((visit) => {
+      const when = formatWhen(visit.last_seen);
       const count = `${visit.visits} visit${visit.visits === 1 ? "" : "s"}`;
-      const stay = formatStay(visit.duration_seconds || 0);
+      const href = `/visits?key=${encodeURIComponent(key)}&ip=${encodeURIComponent(visit.ip)}`;
       return `<article class="row">
         <div>
           <strong>${escapeHtml(visit.device)} · ${escapeHtml(visit.browser)}</strong>
           <p>${escapeHtml(visit.place)}</p>
           <p>IP: ${escapeHtml(visit.ip)}</p>
-          <p>${escapeHtml(count)} · ${escapeHtml(stay)}</p>
+          <p><a href="${href}">${escapeHtml(count)}</a></p>
         </div>
         <time>${escapeHtml(when)}</time>
       </article>`;
     })
     .join("");
-  const body = `<!DOCTYPE html>
+  return page("Hamana Homes Visitor Logs", `<h1>Hamana Homes Visitor Logs</h1>${rows || '<p class="empty">No visits yet.</p>'}`);
+}
+
+function formatWhen(value: string) {
+  return new Date(value).toLocaleTimeString("en-US", {
+    timeZone: "Asia/Manila",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function page(title: string, body: string) {
+  return new Response(
+    `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Hamana Homes Visitor Logs</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     body { margin: 0; background: #f6f4ef; color: #241c17; font: 16px/1.4 Arial, sans-serif; }
     main { max-width: 720px; margin: 2rem auto; background: #fff; border: 1px solid #e6e0d6; border-radius: 16px; padding: 1.25rem 1.4rem 0.4rem; }
     h1 { margin: 0 0 1rem; font-size: 1.35rem; }
     .row { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid #eee; padding: 0.95rem 0; }
     .row strong { display: block; }
-    .row p { margin: 0.15rem 0; color: #5c534b; }
+    .row p, .quiet { margin: 0.15rem 0; color: #5c534b; }
+    a { color: #742433; }
+    .back { margin: 0 0 0.8rem; }
     time { color: #6d645c; white-space: nowrap; }
     .empty { color: #6d645c; }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Hamana Homes Visitor Logs</h1>
-    ${rows || '<p class="empty">No visits yet.</p>'}
-  </main>
+  <main>${body}</main>
 </body>
-</html>`;
-  return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+</html>`,
+    { headers: { "content-type": "text/html; charset=utf-8" } },
+  );
 }
 
 function formatStay(seconds: number) {

@@ -54,7 +54,8 @@ export function Invitation() {
     }
     const send = () => {
       const seconds = Math.max(0, Math.round((Date.now() - started) / 1000));
-      const payload = JSON.stringify({ sessionId, seconds });
+      const page = window.location.hash === "#rsvp" ? "RSVP" : window.location.hash === "#party" ? "Party" : "Cover";
+      const payload = JSON.stringify({ sessionId, seconds, page });
       if (navigator.sendBeacon) {
         navigator.sendBeacon(visitUrl, new Blob([payload], { type: "text/plain" }));
         return;
@@ -73,10 +74,12 @@ export function Invitation() {
     };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("pagehide", send);
+    window.addEventListener("hashchange", send);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", send);
+      window.removeEventListener("hashchange", send);
     };
   }, []);
 
