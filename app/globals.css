@@ -540,60 +540,63 @@ input, textarea {
 .stamps {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.35rem;
+  align-items: start;
 }
 
 .stamp {
+  appearance: none;
   position: relative;
   isolation: isolate;
   display: block;
   width: 100%;
-  aspect-ratio: 764 / 1024;
-  min-height: 0;
+  height: auto;
+  margin: 0;
   padding: 0;
   overflow: visible;
   border: 0;
   border-radius: 0;
-  background: transparent;
+  background: none;
+  box-shadow: none;
   color: var(--ink);
   transition: transform 0.28s ease;
 }
 
 .stamp-art {
-  position: absolute;
-  inset: 0;
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   pointer-events: none;
-  filter: drop-shadow(0 8px 12px rgba(70, 50, 30, 0.08));
+  filter: drop-shadow(0 8px 10px rgba(70, 50, 30, 0.1));
   transition: filter 0.28s ease;
 }
 
 .stamp-copy {
   position: absolute;
   z-index: 2;
-  left: 22%;
-  right: 22%;
-  top: 40%;
+  left: 24%;
+  right: 24%;
+  top: 46%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 0.28rem;
   text-align: center;
-  text-shadow: 0 1px 0 rgba(255, 250, 243, 0.85);
+  text-shadow: 0 1px 0 rgba(255, 250, 243, 0.8);
 }
 
 .stamp strong {
   font-family: var(--font-display), Georgia, serif;
   font-weight: 560;
-  font-size: clamp(0.82rem, 2.5vw, 1.05rem);
-  line-height: 1.15;
+  font-size: clamp(1.05rem, 2.7vw, 1.85rem);
+  line-height: 1.02;
   color: #7a1c24;
 }
 
 .stamp small {
-  color: var(--ink-soft);
-  font-size: 0.75rem;
+  color: #3a2a22;
+  font-size: clamp(0.72rem, 1.5vw, 0.95rem);
+  line-height: 1.2;
 }
 
 .stamp-yes:hover,
@@ -607,16 +610,6 @@ input, textarea {
   filter: drop-shadow(0 16px 18px rgba(150, 100, 40, 0.28)) brightness(1.04);
 }
 
-.stamp-note {
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  font-style: normal;
-  font-size: 0.72rem;
-  line-height: 1.3;
-  color: #5d6e7c;
-}
-
 .stamp-no:hover,
 .stamp-no.on:hover {
   transform: translateY(3px) rotate(-1.5deg) scale(0.98);
@@ -626,13 +619,6 @@ input, textarea {
 .stamp-no.on:hover .stamp-art,
 .stamp-no.on .stamp-art {
   filter: drop-shadow(0 16px 18px rgba(70, 100, 120, 0.26)) brightness(1.03);
-}
-
-.stamp-no:hover .stamp-note,
-.stamp-no.on .stamp-note {
-  max-height: 2.8rem;
-  margin-top: 0.2rem;
-  opacity: 1;
 }
 
 .stamp:focus-visible {

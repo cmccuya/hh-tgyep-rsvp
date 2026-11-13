@@ -193,9 +193,9 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
             className={coming === "yes" ? "stamp stamp-yes on" : "stamp stamp-yes"}
             onClick={() => choose("yes")}
           >
-            <Image className="stamp-art" src="/art/stamp-yes.png" alt="" width={764} height={1024} />
+            <Image className="stamp-art" src="/art/stamp-yes.png" alt="" width={764} height={621} />
             <span className="stamp-copy">
-              <strong>Joyfully Accepts</strong>
+              <strong>Joyfully<br />Accepts</strong>
               <small>Count us in!</small>
             </span>
           </button>
@@ -206,11 +206,10 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
             className={coming === "no" ? "stamp stamp-no on" : "stamp stamp-no"}
             onClick={() => choose("no")}
           >
-            <Image className="stamp-art" src="/art/stamp-no.png" alt="" width={764} height={1024} />
+            <Image className="stamp-art" src="/art/stamp-no.png" alt="" width={762} height={868} />
             <span className="stamp-copy">
-              <strong>Regretfully Declines</strong>
-              <small>Will miss the fun</small>
-              <em className="stamp-note" aria-hidden="true">We’ll miss you at the party! 🥺</em>
+              <strong>Regretfully<br />Declines</strong>
+              <small>Will miss the fun! 🥺</small>
             </span>
           </button>
         </div>
