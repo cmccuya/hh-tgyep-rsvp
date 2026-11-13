@@ -546,31 +546,55 @@ input, textarea {
 .stamp {
   position: relative;
   isolation: isolate;
+  display: block;
+  width: 100%;
+  aspect-ratio: 764 / 1024;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  transition: transform 0.28s ease, box-shadow 0.28s ease;
+}
+
+.stamp-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.stamp-light {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 32%, rgba(255, 248, 230, 0.72) 50%, transparent 68%);
+  transform: translateX(-130%);
+}
+
+.stamp-copy {
+  position: absolute;
+  z-index: 2;
+  left: 22%;
+  right: 22%;
+  top: 40%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.15rem;
-  min-height: 148px;
-  padding: 0.85rem 0.45rem 0.7rem;
   text-align: center;
-  color: var(--ink);
-  background:
-    radial-gradient(circle at 8px 0, transparent 7px, #faf5ed 7.5px) top left / 16px 12px repeat-x,
-    radial-gradient(circle at 8px 100%, transparent 7px, #faf5ed 7.5px) bottom left / 16px 12px repeat-x,
-    radial-gradient(circle at 0 8px, transparent 7px, #faf5ed 7.5px) left top / 12px 16px repeat-y,
-    radial-gradient(circle at 100% 8px, transparent 7px, #faf5ed 7.5px) right top / 12px 16px repeat-y,
-    #faf5ed;
-  border: 1.5px dashed rgba(198, 161, 90, 0.95);
-  border-radius: 6px;
-  box-shadow: inset 0 0 0 5px rgba(250, 245, 237, 0.65);
-  transition: transform 0.28s ease, box-shadow 0.28s ease, background 0.28s ease, filter 0.28s ease, border-color 0.28s ease;
+  text-shadow: 0 1px 0 rgba(255, 250, 243, 0.85);
 }
 
 .stamp strong {
   font-family: var(--font-display), Georgia, serif;
   font-weight: 560;
-  font-size: clamp(0.95rem, 3.2vw, 1.2rem);
+  font-size: clamp(0.82rem, 2.5vw, 1.05rem);
   line-height: 1.15;
   color: #7a1c24;
 }
@@ -580,78 +604,17 @@ input, textarea {
   font-size: 0.75rem;
 }
 
-.stamp-icon, .flake {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.28rem;
-  color: #b8893d;
-}
-
-.stamp-icon svg, .flake svg { width: 28px; height: 28px; }
-.stamp-yes .stamp-icon svg:last-child { width: 40px; height: 20px; }
-
-.stamp-spark, .flake {
-  position: absolute;
-  pointer-events: none;
-}
-
-.stamp-spark { inset: 0; }
-
-.stamp-spark i {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #e4c56a;
-  opacity: 0;
-  left: var(--x);
-  top: 58%;
-}
-
-.stamp-spark i:nth-child(1) { --x: 18%; }
-.stamp-spark i:nth-child(2) { --x: 36%; width: 4px; height: 4px; }
-.stamp-spark i:nth-child(3) { --x: 52%; }
-.stamp-spark i:nth-child(4) { --x: 68%; width: 5px; height: 5px; }
-.stamp-spark i:nth-child(5) { --x: 82%; }
-.stamp-spark i:nth-child(6) { --x: 28%; width: 3px; height: 3px; }
-
-.stamp-yes:hover {
-  transform: translateY(-6px) scale(1.03);
-  box-shadow: 0 16px 28px rgba(198, 161, 90, 0.38), inset 0 0 0 5px rgba(250, 245, 237, 0.65);
-}
-
-.stamp-yes:hover .stamp-icon { animation: stamp-wiggle 0.55s ease-in-out infinite; }
-
-.stamp-yes:hover .stamp-spark i { animation: spark-float 0.9s ease-out infinite; }
-.stamp-spark i:nth-child(2) { animation-delay: 0.12s; }
-.stamp-spark i:nth-child(3) { animation-delay: 0.22s; }
-.stamp-spark i:nth-child(4) { animation-delay: 0.08s; }
-.stamp-spark i:nth-child(5) { animation-delay: 0.28s; }
-.stamp-spark i:nth-child(6) { animation-delay: 0.18s; }
-
-.stamp-yes.on {
-  color: #fff8ee;
-  border-color: #e4c56a;
-  border-style: solid;
-  background: linear-gradient(160deg, #7a1c24 0%, #2d5340 100%);
-  box-shadow: 0 10px 24px rgba(122, 28, 36, 0.28), inset 0 0 0 5px rgba(122, 28, 36, 0.15);
-}
-
-.stamp-yes.on strong, .stamp-yes.on small { color: #fff8ee; }
-.stamp-yes.on .stamp-icon { color: #f0d48a; }
-
+.stamp-yes:hover,
 .stamp-yes.on:hover {
   transform: translateY(-6px) scale(1.03);
-  box-shadow: 0 16px 28px rgba(228, 197, 106, 0.45);
+  box-shadow: 0 16px 28px rgba(198, 161, 90, 0.38);
 }
 
-.flake {
-  left: 50%;
-  top: 0.35rem;
-  opacity: 0;
-  color: #7f93a3;
-  transform: translateX(-50%);
+.stamp-yes:hover .stamp-light,
+.stamp-no:hover .stamp-light { animation: stamp-light 1.05s ease; }
+
+.stamp-yes.on {
+  box-shadow: 0 12px 28px rgba(198, 161, 90, 0.45);
 }
 
 .stamp-note {
@@ -664,15 +627,13 @@ input, textarea {
   color: #5d6e7c;
 }
 
-.stamp-no:hover {
+.stamp-no:hover,
+.stamp-no.on:hover {
   transform: translateY(3px) rotate(-1.5deg) scale(0.98);
-  filter: saturate(0.45);
-  background-color: #e7eef2;
-  border-color: #9aafbc;
+  box-shadow: 0 8px 18px rgba(90, 110, 125, 0.22);
 }
 
-.stamp-no:hover .flake,
-.stamp-no.on .flake { animation: flake-fall 1s ease-in infinite; }
+.stamp-no:hover .stamp-art { filter: saturate(0.75) brightness(0.98); }
 
 .stamp-no:hover .stamp-note,
 .stamp-no.on .stamp-note {
@@ -682,10 +643,7 @@ input, textarea {
 }
 
 .stamp-no.on {
-  filter: saturate(0.55);
-  border-style: solid;
-  border-color: #8aa0ad;
-  background: linear-gradient(180deg, #eef3f6, #d5e0e8);
+  box-shadow: 0 10px 22px rgba(90, 110, 125, 0.28);
 }
 
 .stamp:focus-visible {
@@ -731,21 +689,9 @@ input, textarea {
   text-align: center;
 }
 
-@keyframes stamp-wiggle {
-  0%, 100% { transform: rotate(-8deg); }
-  50% { transform: rotate(8deg); }
-}
-
-@keyframes spark-float {
-  0% { opacity: 0; transform: translateY(8px) scale(0.4); }
-  25% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-26px) scale(1); }
-}
-
-@keyframes flake-fall {
-  0% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-  25% { opacity: 0.9; }
-  100% { opacity: 0; transform: translateX(-50%) translateY(16px); }
+@keyframes stamp-light {
+  from { transform: translateX(-130%); }
+  to { transform: translateX(130%); }
 }
 
 .field em, .field-error {
@@ -795,9 +741,7 @@ input, textarea {
   .seal,
   .mailbox img,
   .notes i,
-  .stamp-icon,
-  .stamp-spark i,
-  .flake {
+  .stamp-light {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
@@ -805,7 +749,8 @@ input, textarea {
   }
 
   .stamp-yes:hover,
-  .stamp-no:hover { transform: none; }
-  .stamp-spark i { opacity: 0; }
-  .flake { opacity: 0; }
+  .stamp-no:hover,
+  .stamp-yes.on:hover,
+  .stamp-no.on:hover { transform: none; }
+  .stamp-light { opacity: 0; }
 }

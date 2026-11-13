@@ -193,15 +193,12 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
             className={coming === "yes" ? "stamp stamp-yes on" : "stamp stamp-yes"}
             onClick={() => choose("yes")}
           >
-            <span className="stamp-spark" aria-hidden="true">
-              <i /><i /><i /><i /><i /><i />
+            <Image className="stamp-art" src="/art/stamp-yes.jpg" alt="" width={764} height={1024} />
+            <span className="stamp-light" aria-hidden="true" />
+            <span className="stamp-copy">
+              <strong>Joyfully Accepts</strong>
+              <small>Count us in!</small>
             </span>
-            <span className="stamp-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.8 14.4 8.6h7.1l-5.7 4.2 2.2 6.8L12 15.6 6 19.6l2.2-6.8L2.5 8.6h7.1z" /></svg>
-              <svg viewBox="0 0 36 18"><circle cx="8" cy="9" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="28" cy="9" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M13.2 9h9.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-            </span>
-            <strong>Joyfully Accepts</strong>
-            <small>Count us in!</small>
           </button>
           <button
             type="button"
@@ -210,15 +207,13 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
             className={coming === "no" ? "stamp stamp-no on" : "stamp stamp-no"}
             onClick={() => choose("no")}
           >
-            <span className="flake" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" d="M12 2.5v19M12 5.2 9.6 3M12 5.2l2.4-2.2M12 18.8 9.6 21M12 18.8l2.4 2.2M4.2 7.2l15.6 9.6M6.2 6.4 4.4 4.2M6.2 6.4l2.6.2M17.8 17.6l1.8 2.2M17.8 17.6l-2.6-.2M19.8 7.2 4.2 16.8M17.8 6.4l1.8-2.2M17.8 6.4l-2.6.2M6.2 17.6 4.4 19.8M6.2 17.6l2.6-.2" /></svg>
+            <Image className="stamp-art" src="/art/stamp-no.jpg" alt="" width={764} height={1024} />
+            <span className="stamp-light" aria-hidden="true" />
+            <span className="stamp-copy">
+              <strong>Regretfully Declines</strong>
+              <small>Will miss the fun</small>
+              <em className="stamp-note" aria-hidden="true">We’ll miss you at the party! 🥺</em>
             </span>
-            <span className="stamp-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" d="M12 2.5v19M12 5.2 9.6 3M12 5.2l2.4-2.2M12 18.8 9.6 21M12 18.8l2.4 2.2M4.2 7.2l15.6 9.6M6.2 6.4 4.4 4.2M6.2 6.4l2.6.2M17.8 17.6l1.8 2.2M17.8 17.6l-2.6-.2M19.8 7.2 4.2 16.8M17.8 6.4l1.8-2.2M17.8 6.4l-2.6.2M6.2 17.6 4.4 19.8M6.2 17.6l2.6-.2" /></svg>
-            </span>
-            <strong>Regretfully Declines</strong>
-            <small>Will miss the fun</small>
-            <em className="stamp-note" aria-hidden="true">We’ll miss you at the party! 🥺</em>
           </button>
         </div>
         {errors.coming ? <em className="field-error">{errors.coming}</em> : null}
