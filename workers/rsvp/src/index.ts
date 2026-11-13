@@ -330,12 +330,14 @@ type StoredRsvp = {
 };
 
 function blockKey(blockLot: string) {
-  return blockLot
-    .toLowerCase()
-    .replace(/\b(block|lot)\b/g, " ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
+  const text = blockLot.toLowerCase();
+  const labeled = text.match(/(?:block|blk|b)\s*[-.]?\s*(\d+)\s*[-/,]?\s*(?:lot|lt|l)\s*[-.]?\s*(\d+)([a-z])?/);
+  if (labeled) return `${labeled[1]}|${labeled[2]}${labeled[3] || ""}`;
+  const pair = text.match(/(\d+)\s*[-/,\s]\s*(\d+)([a-z])?/);
+  if (pair) return `${pair[1]}|${pair[2]}${pair[3] || ""}`;
+  const numbers = text.match(/\d+/g) ?? [];
+  if (numbers.length >= 2) return `${numbers[0]}|${numbers[1]}`;
+  return text.replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 }
 
 async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
@@ -385,7 +387,10 @@ async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
   const extras = listed.results.filter(
     (row) => row.guest_id !== match.guest_id && (row.guest_id === reply.guestId || blockKey(row.block_lot) === key),
   );
-  for (const extra of extras) await removeHousehold(env, extra, reply.updatedAt);
+  for (const extra of extras) {
+    if (extra.guest_id !== reply.guestId) await rememberHistory(env, extra, reply.updatedAt);
+    await env.DB.prepare("DELETE FROM rsvps WHERE guest_id = ?").bind(extra.guest_id).run();
+  }
   if (match.guest_id !== reply.guestId) await rememberHistory(env, match, reply.updatedAt);
   await env.DB.prepare(
     `UPDATE rsvps
@@ -426,11 +431,6 @@ async function rememberHistory(env: Env, row: StoredRsvp, replacedAt: string) {
     .run();
 }
 
-async function removeHousehold(env: Env, row: StoredRsvp, replacedAt: string) {
-  await rememberHistory(env, row, replacedAt);
-  await env.DB.prepare("DELETE FROM rsvps WHERE guest_id = ?").bind(row.guest_id).run();
-}
-
 async function upsertSheet(env: Env, reply: Reply, incomingGuestId = reply.guestId) {
   const token = await googleToken(env.GOOGLE_CLIENT_EMAIL!, env.GOOGLE_PRIVATE_KEY!);
   const tab = env.SHEET_TAB || "RSVPs";
@@ -464,7 +464,9 @@ async function upsertSheet(env: Env, reply: Reply, incomingGuestId = reply.guest
   }
   const canonical = matches.find((item) => item.row[0] === reply.guestId) || matches[0];
   const extras = matches.filter((item) => item.index !== canonical.index);
-  for (const extra of extras) await archiveSheetRow(token, spreadsheetId, extra.row, reply.updatedAt);
+  for (const extra of extras) {
+    if (extra.row[0] !== incomingGuestId) await archiveSheetRow(token, spreadsheetId, extra.row, reply.updatedAt);
+  }
   if (canonical.row[0] && canonical.row[0] !== incomingGuestId) {
     await archiveSheetRow(token, spreadsheetId, canonical.row, reply.updatedAt);
   }
