@@ -40,13 +40,44 @@ export function Invitation() {
 
   useEffect(() => {
     const rsvpUrl = process.env.NEXT_PUBLIC_RSVP_URL;
-    if (!rsvpUrl || sessionStorage.getItem("hamana-visit")) return;
+    if (!rsvpUrl) return;
     const visitUrl = new URL("/visit", rsvpUrl).href;
-    fetch(visitUrl, { method: "POST", keepalive: true })
-      .then((response) => {
-        if (response.ok) sessionStorage.setItem("hamana-visit", "1");
-      })
-      .catch(() => undefined);
+    let sessionId = sessionStorage.getItem("hamana-visit-id");
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      sessionStorage.setItem("hamana-visit-id", sessionId);
+    }
+    let started = Number(sessionStorage.getItem("hamana-visit-start") || 0);
+    if (!started) {
+      started = Date.now();
+      sessionStorage.setItem("hamana-visit-start", String(started));
+    }
+    const send = () => {
+      const seconds = Math.max(0, Math.round((Date.now() - started) / 1000));
+      const payload = JSON.stringify({ sessionId, seconds });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(visitUrl, new Blob([payload], { type: "text/plain" }));
+        return;
+      }
+      fetch(visitUrl, {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: payload,
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    send();
+    const timer = window.setInterval(send, 15000);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") send();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", send);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", send);
+    };
   }, []);
 
   function go(next: View) {

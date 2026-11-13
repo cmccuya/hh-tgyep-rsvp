@@ -103,31 +103,82 @@ async function recordVisit(request: Request, env: Env) {
   const cf = (request as Request & { cf?: { city?: string; region?: string; country?: string } }).cf;
   const place = [cf?.city, cf?.region || cf?.country].filter(Boolean).join(", ") || "Unknown";
   const seen = new Date().toISOString();
+  const report = await readStay(request);
+  let previous = 0;
+  let isNew = true;
+  if (report.sessionId) {
+    const found = await env.DB.prepare(
+      "SELECT reported_seconds FROM visit_sessions WHERE session_id = ?",
+    )
+      .bind(report.sessionId)
+      .all<{ reported_seconds: number }>();
+    if (found.results[0]) {
+      previous = found.results[0].reported_seconds;
+      isNew = false;
+    }
+    const next = Math.max(previous, report.seconds);
+    await env.DB.prepare(
+      `INSERT INTO visit_sessions (session_id, ip, reported_seconds)
+       VALUES (?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET
+         reported_seconds = excluded.reported_seconds,
+         ip = excluded.ip`,
+    )
+      .bind(report.sessionId, ip, next)
+      .run();
+    report.seconds = next - previous;
+  }
+  const addedVisits = isNew ? 1 : 0;
   await env.DB.prepare(
-    `INSERT INTO visits (ip, device, browser, place, visits, last_seen)
-     VALUES (?, ?, ?, ?, 1, ?)
+    `INSERT INTO visits (ip, device, browser, place, visits, duration_seconds, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(ip) DO UPDATE SET
        device = excluded.device,
        browser = excluded.browser,
        place = excluded.place,
-       visits = visits.visits + 1,
+       visits = visits.visits + ?,
+       duration_seconds = visits.duration_seconds + ?,
        last_seen = excluded.last_seen`,
   )
-    .bind(ip, device, browser, place, seen)
+    .bind(
+      ip,
+      device,
+      browser,
+      place,
+      addedVisits,
+      report.seconds,
+      seen,
+      addedVisits,
+      report.seconds,
+    )
     .run();
   return json({ ok: true });
 }
 
+async function readStay(request: Request) {
+  try {
+    const body = JSON.parse(await request.text()) as { sessionId?: unknown; seconds?: unknown };
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId.slice(0, 80) : "";
+    const seconds = Math.min(14400, Math.max(0, Math.round(Number(body.seconds) || 0)));
+    if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return { sessionId: "", seconds: 0 };
+    return { sessionId, seconds };
+  } catch {
+    return { sessionId: "", seconds: 0 };
+  }
+}
+
 function describeAgent(agent: string) {
-  const browser = /Edg\//.test(agent)
+  const browser = /Edg\/|EdgiOS\//.test(agent)
     ? "Edge"
-    : /Chrome\//.test(agent) && !/Edg\//.test(agent)
-      ? "Chrome"
-      : /Firefox\//.test(agent)
-        ? "Firefox"
-        : /Safari\//.test(agent)
-          ? "Safari"
-          : "Browser";
+    : /OPR\/|Opera/.test(agent)
+      ? "Opera"
+      : /CriOS\/|Chrome\//.test(agent)
+        ? "Chrome"
+        : /FxiOS\/|Firefox\//.test(agent)
+          ? "Firefox"
+          : /Safari\//.test(agent)
+            ? "Safari"
+            : "Browser";
   const device = /iPhone/.test(agent)
     ? "iPhone"
     : /iPad/.test(agent)
@@ -142,13 +193,14 @@ async function visitLog(request: Request, env: Env, url: URL) {
   const key = url.searchParams.get("key") || "";
   if (!env.VISITS_KEY || key !== env.VISITS_KEY) return json({ error: "Not found" }, 404);
   const listed = await env.DB.prepare(
-    "SELECT device, browser, place, ip, visits, last_seen FROM visits ORDER BY last_seen DESC",
+    "SELECT device, browser, place, ip, visits, duration_seconds, last_seen FROM visits ORDER BY last_seen DESC",
   ).all<{
     device: string;
     browser: string;
     place: string;
     ip: string;
     visits: number;
+    duration_seconds: number;
     last_seen: string;
   }>();
   const rows = listed.results
@@ -159,12 +211,13 @@ async function visitLog(request: Request, env: Env, url: URL) {
         minute: "2-digit",
       });
       const count = `${visit.visits} visit${visit.visits === 1 ? "" : "s"}`;
+      const stay = formatStay(visit.duration_seconds || 0);
       return `<article class="row">
         <div>
           <strong>${escapeHtml(visit.device)} · ${escapeHtml(visit.browser)}</strong>
           <p>${escapeHtml(visit.place)}</p>
           <p>IP: ${escapeHtml(visit.ip)}</p>
-          <p>${escapeHtml(count)}</p>
+          <p>${escapeHtml(count)} · ${escapeHtml(stay)}</p>
         </div>
         <time>${escapeHtml(when)}</time>
       </article>`;
@@ -195,6 +248,15 @@ async function visitLog(request: Request, env: Env, url: URL) {
 </body>
 </html>`;
   return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+function formatStay(seconds: number) {
+  if (seconds < 60) return `Stayed ${seconds} sec`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Stayed ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `Stayed ${hours} hr ${rest} min` : `Stayed ${hours} hr`;
 }
 
 function escapeHtml(value: string) {
