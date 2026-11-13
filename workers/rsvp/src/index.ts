@@ -1,6 +1,7 @@
 interface D1Statement {
   bind(...values: unknown[]): D1Statement;
   run(): Promise<unknown>;
+  all<T>(): Promise<{ results: T[] }>;
 }
 
 interface D1Database {
@@ -13,6 +14,7 @@ interface Env {
   GOOGLE_SHEET_ID?: string;
   GOOGLE_CLIENT_EMAIL?: string;
   GOOGLE_PRIVATE_KEY?: string;
+  VISITS_KEY?: string;
 }
 
 type Reply = {
@@ -43,6 +45,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") return cors(new Response(null, { status: 204 }));
     const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/visit") {
+      return cors(await recordVisit(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/visits") {
+      return visitLog(request, env, url);
+    }
     if (request.method !== "POST" || url.pathname !== "/rsvp") {
       return cors(json({ error: "Not found" }, 404));
     }
@@ -87,6 +95,114 @@ export default {
     return cors(json({ ok: true, guestId: reply.guestId, sheet }));
   },
 };
+
+async function recordVisit(request: Request, env: Env) {
+  const ip = request.headers.get("cf-connecting-ip") || "Unknown";
+  const agent = request.headers.get("user-agent") || "";
+  const { device, browser } = describeAgent(agent);
+  const cf = (request as Request & { cf?: { city?: string; region?: string; country?: string } }).cf;
+  const place = [cf?.city, cf?.region || cf?.country].filter(Boolean).join(", ") || "Unknown";
+  const seen = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO visits (ip, device, browser, place, visits, last_seen)
+     VALUES (?, ?, ?, ?, 1, ?)
+     ON CONFLICT(ip) DO UPDATE SET
+       device = excluded.device,
+       browser = excluded.browser,
+       place = excluded.place,
+       visits = visits.visits + 1,
+       last_seen = excluded.last_seen`,
+  )
+    .bind(ip, device, browser, place, seen)
+    .run();
+  return json({ ok: true });
+}
+
+function describeAgent(agent: string) {
+  const browser = /Edg\//.test(agent)
+    ? "Edge"
+    : /Chrome\//.test(agent) && !/Edg\//.test(agent)
+      ? "Chrome"
+      : /Firefox\//.test(agent)
+        ? "Firefox"
+        : /Safari\//.test(agent)
+          ? "Safari"
+          : "Browser";
+  const device = /iPhone/.test(agent)
+    ? "iPhone"
+    : /iPad/.test(agent)
+      ? "iPad"
+      : /Android/.test(agent)
+        ? "Smartphone"
+        : "Desktop";
+  return { device, browser };
+}
+
+async function visitLog(request: Request, env: Env, url: URL) {
+  const key = url.searchParams.get("key") || "";
+  if (!env.VISITS_KEY || key !== env.VISITS_KEY) return json({ error: "Not found" }, 404);
+  const listed = await env.DB.prepare(
+    "SELECT device, browser, place, ip, visits, last_seen FROM visits ORDER BY last_seen DESC",
+  ).all<{
+    device: string;
+    browser: string;
+    place: string;
+    ip: string;
+    visits: number;
+    last_seen: string;
+  }>();
+  const rows = listed.results
+    .map((visit) => {
+      const when = new Date(visit.last_seen).toLocaleTimeString("en-US", {
+        timeZone: "Asia/Manila",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const count = `${visit.visits} visit${visit.visits === 1 ? "" : "s"}`;
+      return `<article class="row">
+        <div>
+          <strong>${escapeHtml(visit.device)} · ${escapeHtml(visit.browser)}</strong>
+          <p>${escapeHtml(visit.place)}</p>
+          <p>IP: ${escapeHtml(visit.ip)}</p>
+          <p>${escapeHtml(count)}</p>
+        </div>
+        <time>${escapeHtml(when)}</time>
+      </article>`;
+    })
+    .join("");
+  const body = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Hamana Homes Visitor Logs</title>
+  <style>
+    body { margin: 0; background: #f6f4ef; color: #241c17; font: 16px/1.4 Arial, sans-serif; }
+    main { max-width: 720px; margin: 2rem auto; background: #fff; border: 1px solid #e6e0d6; border-radius: 16px; padding: 1.25rem 1.4rem 0.4rem; }
+    h1 { margin: 0 0 1rem; font-size: 1.35rem; }
+    .row { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid #eee; padding: 0.95rem 0; }
+    .row strong { display: block; }
+    .row p { margin: 0.15rem 0; color: #5c534b; }
+    time { color: #6d645c; white-space: nowrap; }
+    .empty { color: #6d645c; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Hamana Homes Visitor Logs</h1>
+    ${rows || '<p class="empty">No visits yet.</p>'}
+  </main>
+</body>
+</html>`;
+  return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => {
+    const marks: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    return marks[char];
+  });
+}
 
 async function readReply(request: Request): Promise<Reply | null> {
   let body: Partial<Reply>;

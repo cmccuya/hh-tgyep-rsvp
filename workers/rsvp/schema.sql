@@ -9,3 +9,12 @@ CREATE TABLE IF NOT EXISTS rsvps (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS visits (
+  ip TEXT PRIMARY KEY,
+  device TEXT NOT NULL,
+  browser TEXT NOT NULL,
+  place TEXT NOT NULL,
+  visits INTEGER NOT NULL,
+  last_seen TEXT NOT NULL
+);

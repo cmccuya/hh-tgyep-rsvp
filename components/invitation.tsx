@@ -38,6 +38,17 @@ export function Invitation() {
     return () => window.removeEventListener("hashchange", apply);
   }, []);
 
+  useEffect(() => {
+    const rsvpUrl = process.env.NEXT_PUBLIC_RSVP_URL;
+    if (!rsvpUrl || sessionStorage.getItem("hamana-visit")) return;
+    const visitUrl = new URL("/visit", rsvpUrl).href;
+    fetch(visitUrl, { method: "POST", keepalive: true })
+      .then((response) => {
+        if (response.ok) sessionStorage.setItem("hamana-visit", "1");
+      })
+      .catch(() => undefined);
+  }, []);
+
   function go(next: View) {
     setLifting(false);
     window.location.hash = next === "cover" ? "" : `#${next}`;
