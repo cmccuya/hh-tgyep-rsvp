@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import { RiseIn, WriteIn, letterDelay } from "@/components/motion";
 
 const STORAGE_KEY = "hamana-homes-rsvp";
 
@@ -32,7 +33,7 @@ function readReply(): Reply | null {
   }
 }
 
-export function RsvpForm({ onBack }: { onBack: () => void }) {
+export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: ReactNode }) {
   const [name, setName] = useState("");
   const [blockLot, setBlockLot] = useState("");
   const [coming, setComing] = useState<Coming>("");
@@ -100,6 +101,7 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
   if (!ready) {
     return (
       <div className="sheet rsvp-sheet">
+        {toolbar}
         <p className="quiet">Opening the reply card…</p>
       </div>
     );
@@ -109,9 +111,14 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
     const joining = saved.coming === "yes";
     return (
       <div className="sheet rsvp-sheet">
+        {toolbar}
         <Image className="seal" src="/art/envelope.png" alt="" width={900} height={900} />
-        <p className="eyebrow">Reply received</p>
-        <h2>{joining ? "We’ll save your household a place." : "We’ll miss you."}</h2>
+        <p className="eyebrow" aria-label="Reply received">
+          <RiseIn text="Reply received" />
+        </p>
+        <h2 aria-label={joining ? "We'll save your household a place." : "We'll miss you."}>
+          <WriteIn text={joining ? "We’ll save your household a place." : "We’ll miss you."} delay={letterDelay("Reply received", 40)} />
+        </h2>
         <p className="lede">
           {joining
             ? `${saved.name}, block ${saved.blockLot}, is joyfully coming${
@@ -136,9 +143,14 @@ export function RsvpForm({ onBack }: { onBack: () => void }) {
 
   return (
     <form className="sheet rsvp-sheet" onSubmit={onSubmit} noValidate>
+      {toolbar}
       <Image className="seal" src="/art/envelope.png" alt="" width={900} height={900} />
-      <p className="eyebrow">Reply card</p>
-      <h2>Will your household join us?</h2>
+      <p className="eyebrow" aria-label="Reply card">
+        <RiseIn text="Reply card" />
+      </p>
+      <h2 aria-label="Will your household join us?">
+        <WriteIn text="Will your household join us?" delay={letterDelay("Reply card", 80)} />
+      </h2>
 
       <label className="field">
         <span>Your name*</span>

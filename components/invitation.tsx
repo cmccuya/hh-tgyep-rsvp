@@ -2,8 +2,10 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { RiseIn, WriteIn, letterDelay, useInView, wordDelay } from "@/components/motion";
 import { CarolFrame, useCarol } from "@/components/music";
 import { RsvpForm } from "@/components/rsvp-form";
+import { Snow } from "@/components/snow";
 import { event } from "@/lib/event";
 
 type View = "cover" | "party" | "rsvp";
@@ -16,7 +18,17 @@ function viewFromHash(): View {
 
 export function Invitation() {
   const [view, setView] = useState<View>("cover");
+  const [lifting, setLifting] = useState(false);
   const carol = useCarol();
+  const date = useInView<HTMLDivElement>();
+  const place = useInView<HTMLElement>();
+  const tree = useInView<HTMLDivElement>();
+  const food = useInView<HTMLElement>();
+  const gift = useInView<HTMLElement>();
+  const sleigh = useInView<HTMLDivElement>();
+  const games = useInView<HTMLElement>();
+  const input = useInView<HTMLDivElement>();
+  const reply = useInView<HTMLDivElement>();
 
   useEffect(() => {
     const apply = () => setView(viewFromHash());
@@ -26,6 +38,7 @@ export function Invitation() {
   }, []);
 
   function go(next: View) {
+    setLifting(false);
     window.location.hash = next === "cover" ? "" : `#${next}`;
     window.scrollTo(0, 0);
   }
@@ -36,115 +49,180 @@ export function Invitation() {
     carol.play();
   }
 
+  function openReply() {
+    if (lifting) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      go("rsvp");
+      return;
+    }
+    setLifting(true);
+    window.setTimeout(() => go("rsvp"), 420);
+  }
+
+  const titleDelay = 160;
+  const welcomeDelay = titleDelay + letterDelay(event.title, 40);
+
   return (
     <div className="stage">
+      <Snow />
       <CarolFrame />
-      {view !== "cover" ? (
-        <button
-          type="button"
-          className="music"
-          aria-pressed={carol.playing}
-          onClick={() => (carol.playing ? carol.pause() : carol.play())}
-        >
-          <Bell />
-          <span>
-            <strong>{carol.playing ? "Pause" : "Play"}</strong>
-            <small>
-              {event.song}
-              <br />
-              {event.artist}
-            </small>
-          </span>
-        </button>
-      ) : null}
 
       {view === "cover" ? (
-        <section className="cover">
+        <section className="cover rise" key="cover">
           <Image className="cover-bg" src="/art/snow.jpg" alt="" fill priority sizes="100vw" />
           <div className="cover-inner">
-            <Image className="garland" src="/art/garland.png" alt="" width={1000} height={558} priority />
-            <p className="eyebrow light">You&apos;re invited</p>
-            <h1>{event.host}</h1>
-            <p className="cover-title">{event.title}</p>
-            <button type="button" className="mailbox" onClick={openCard}>
-              <Image src="/art/mailbox.png" alt="" width={900} height={900} priority />
-              <span>Open the invitation</span>
+            <div className="crest">
+              <div className="crest-sway">
+                <Image className="garland" src="/art/garland.png" alt="" width={1000} height={558} priority />
+              </div>
+            </div>
+            <p className="eyebrow light" aria-label="You're invited">
+              <RiseIn text="You're invited" />
+            </p>
+            <h1 aria-label={event.host}>
+              <WriteIn text={event.host} delay={titleDelay} />
+            </h1>
+            <p className="cover-title" aria-label={event.title}>
+              <WriteIn text={event.title} delay={titleDelay + letterDelay(event.host, 80)} />
+            </p>
+            <button type="button" className="mailbox" onClick={openCard} aria-label="Click to open">
+              <Image src="/art/mailbox.png" alt="" width={422} height={786} priority />
             </button>
           </div>
         </section>
       ) : null}
 
       {view === "party" ? (
-        <article className="sheet rise">
-          <Image className="garland" src="/art/garland.png" alt="" width={1000} height={558} />
+        <article className="sheet rise" key="party">
+          <MusicToggle playing={carol.playing} onToggle={() => (carol.playing ? carol.pause() : carol.play())} />
+          <div className="crest">
+            <div className="crest-sway">
+              <Image className="garland" src="/art/garland.png" alt="" width={1000} height={558} />
+            </div>
+          </div>
 
           <div className="frame frame-bow">
             <Image src="/art/bow.png" alt="" width={1000} height={1339} />
             <div className="frame-copy">
-              <p className="eyebrow">{event.host}</p>
-              <h1>{event.title}</h1>
-              <p>{event.welcome}</p>
+              <p className="eyebrow" aria-label={event.host}>
+                <RiseIn text={event.host} />
+              </p>
+              <h1 aria-label={event.title}>
+                <WriteIn text={event.title} delay={titleDelay} />
+              </h1>
+              <p aria-label={event.welcome}>
+                <RiseIn text={event.welcome} delay={welcomeDelay} />
+              </p>
             </div>
           </div>
 
-          <div className="plaque">
+          <div className="plaque" ref={date.ref}>
             <Image src="/art/plaque.png" alt="" width={1000} height={558} />
             <div className="plaque-copy">
-              <p>{event.dateLabel}</p>
-              <strong>{event.dateValue}</strong>
+              <p aria-label={event.dateLabel}>
+                <RiseIn text={event.dateLabel} active={date.shown} />
+              </p>
+              <strong aria-label={event.dateValue}>
+                <WriteIn text={event.dateValue} active={date.shown} delay={wordDelay(event.dateLabel)} />
+              </strong>
             </div>
           </div>
-          <p className="note">{event.dateNote}</p>
+          <p className="note" aria-label={event.dateNote}>
+            <RiseIn text={event.dateNote} active={date.shown} delay={letterDelay(event.dateValue, 80)} />
+          </p>
 
-          <section className="block">
-            <h2>{event.placeLabel}</h2>
-            <p className="place">{event.place}</p>
-            <p className="quiet">{event.placeDetail}</p>
+          <section className="block" ref={place.ref}>
+            <h2 aria-label={event.placeLabel}>
+              <RiseIn text={event.placeLabel} active={place.shown} />
+            </h2>
+            <p className="place" aria-label={event.place}>
+              <RiseIn text={event.place} active={place.shown} delay={wordDelay(event.placeLabel)} />
+            </p>
+            <p className="quiet" aria-label={event.placeDetail}>
+              <RiseIn text={event.placeDetail} active={place.shown} delay={wordDelay(event.placeLabel) + wordDelay(event.place)} />
+            </p>
             <a className="btn btn-berry" href={event.mapUrl} target="_blank" rel="noopener noreferrer">
               Check location
             </a>
           </section>
 
-          <Image className="ornament tree" src="/art/tree.png" alt="Watercolor Christmas tree with wrapped gifts" width={900} height={900} />
+          <div className={`tree-slot ${tree.shown ? "in" : ""}`} ref={tree.ref}>
+            <Image className="ornament tree" src="/art/tree.png" alt="Watercolor Christmas tree with wrapped gifts" width={900} height={900} />
+          </div>
 
-          <section className="block">
-            <h2>{event.foodLabel}</h2>
-            <p>{event.food}</p>
+          <section className="block" ref={food.ref}>
+            <h2 aria-label={event.foodLabel}>
+              <RiseIn text={event.foodLabel} active={food.shown} />
+            </h2>
+            <p aria-label={event.food}>
+              <RiseIn text={event.food} active={food.shown} delay={wordDelay(event.foodLabel)} />
+            </p>
           </section>
 
-          <section className="block">
-            <h2>{event.giftLabel}</h2>
-            <p>{event.gift}</p>
+          <section className="block" ref={gift.ref}>
+            <h2 aria-label={event.giftLabel}>
+              <RiseIn text={event.giftLabel} active={gift.shown} />
+            </h2>
+            <p aria-label={event.gift}>
+              <RiseIn text={event.gift} active={gift.shown} delay={wordDelay(event.giftLabel)} />
+            </p>
           </section>
 
-          <Image
-            className="ornament sleigh"
-            src="/art/sleigh.png"
-            alt="Watercolor of Santa in a sleigh pulled by a reindeer"
-            width={900}
-            height={900}
-          />
-
-          <section className="games">
-            <Image src="/art/nutcracker.png" alt="Watercolor nutcracker" width={900} height={1205} />
-            <div>
-              <h2>{event.gamesLabel}</h2>
-              <p>{event.games}</p>
-            </div>
-          </section>
-
-          <div className="frame frame-scallop">
-            <Image src="/art/scallop.png" alt="" width={1000} height={1339} />
-            <div className="frame-copy">
-              <h2>{event.inputLabel}</h2>
-              <p>{event.input}</p>
+          <div className={`sleigh-slot ${sleigh.shown ? "in" : ""}`} ref={sleigh.ref}>
+            <div className="bob">
+              <Image
+                className="ornament sleigh"
+                src="/art/sleigh.png"
+                alt="Watercolor of Santa in a sleigh pulled by a reindeer"
+                width={900}
+                height={900}
+              />
             </div>
           </div>
 
-          <div className="rsvp-cta">
-            <Image src="/art/envelope.png" alt="" width={900} height={900} />
-            <p className="script">{event.rsvp}</p>
-            <button type="button" className="btn btn-berry" onClick={() => go("rsvp")}>
+          <section className={`games ${games.shown ? "in" : ""}`} ref={games.ref}>
+            <div className="pop">
+              <div className="rock">
+                <Image src="/art/nutcracker.png" alt="Watercolor nutcracker" width={900} height={1205} />
+              </div>
+            </div>
+            <div>
+              <h2 aria-label={event.gamesLabel}>
+                <RiseIn text={event.gamesLabel} active={games.shown} />
+              </h2>
+              <p aria-label={event.games}>
+                <RiseIn text={event.games} active={games.shown} delay={wordDelay(event.gamesLabel)} />
+              </p>
+            </div>
+          </section>
+
+          <div className="frame frame-scallop" ref={input.ref}>
+            <Image src="/art/scallop.png" alt="" width={1000} height={1339} />
+            <div className="frame-copy">
+              <h2 aria-label={event.inputLabel}>
+                <WriteIn text={event.inputLabel} active={input.shown} />
+              </h2>
+              <p aria-label={event.input}>
+                <RiseIn text={event.input} active={input.shown} delay={letterDelay(event.inputLabel, 60)} />
+              </p>
+            </div>
+          </div>
+
+          <div className={`rsvp-cta ${reply.shown ? "in" : ""}`} ref={reply.ref}>
+            <button
+              type="button"
+              className={`envelope-open ${lifting ? "lift" : ""}`}
+              onClick={openReply}
+              aria-label="Kindly RSVP. Send your reply."
+            >
+              <span className="envelope-bob">
+                <Image src="/art/envelope.png" alt="" width={900} height={900} />
+                <span className="letter script" aria-label={event.rsvp}>
+                  <WriteIn text={event.rsvp} active={reply.shown} />
+                </span>
+              </span>
+            </button>
+            <button type="button" className="btn btn-berry" onClick={openReply}>
               Send your reply
             </button>
           </div>
@@ -158,19 +236,46 @@ export function Invitation() {
       ) : null}
 
       {view === "rsvp" ? (
-        <div className="rise">
-          <RsvpForm onBack={() => go("party")} />
+        <div className="rise" key="rsvp">
+          <RsvpForm
+            onBack={() => go("party")}
+            toolbar={<MusicToggle playing={carol.playing} onToggle={() => (carol.playing ? carol.pause() : carol.play())} />}
+          />
         </div>
       ) : null}
     </div>
   );
 }
 
-function Bell() {
+function MusicToggle({ playing, onToggle }: { playing: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="music" aria-pressed={playing} onClick={onToggle}>
+      <span className="note-icon">
+        <Note />
+        {playing ? (
+          <span className="notes" aria-hidden="true">
+            <i>♪</i>
+            <i>♫</i>
+          </span>
+        ) : null}
+      </span>
+      <span>
+        <strong>{playing ? "Pause" : "Play"}</strong>
+        <small>
+          {event.song}
+          <br />
+          {event.artist}
+        </small>
+      </span>
+    </button>
+  );
+}
+
+function Note() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18">
       <path
-        d="M12 3.5a.8.8 0 0 1 .8.7V5a6 6 0 0 1 4.7 5.8v2.2c0 .7.3 1.4.8 1.9l.6.5H5.1l.6-.5a2.6 2.6 0 0 0 .8-1.9v-2.2A6 6 0 0 1 11.2 5V4.2a.8.8 0 0 1 .8-.7Zm0 16.2a2.1 2.1 0 0 0 2-1.5H10a2.1 2.1 0 0 0 2 1.5Z"
+        d="M9 17.5a2.5 2.5 0 1 1-2-2.45V6.2l10-2v9.15a2.5 2.5 0 1 1-2-2.45V6.4l-6 1.2v9.9Z"
         fill="currentColor"
       />
     </svg>
