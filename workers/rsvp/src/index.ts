@@ -317,15 +317,25 @@ function clean(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-function householdKey(name: string, blockLot: string) {
-  const norm = (value: string) =>
-    value
-      .toLowerCase()
-      .replace(/\b(block|lot)\b/g, " ")
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim()
-      .replace(/\s+/g, " ");
-  return `${norm(name)}|${norm(blockLot)}`;
+type StoredRsvp = {
+  guest_id: string;
+  name: string;
+  block_lot: string;
+  coming: string;
+  guests: string;
+  potluck: string;
+  suggestions: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function blockKey(blockLot: string) {
+  return blockLot
+    .toLowerCase()
+    .replace(/\b(block|lot)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
@@ -346,21 +356,13 @@ async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
   ).run();
   const listed = await env.DB.prepare(
     "SELECT guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at FROM rsvps",
-  ).all<{
-    guest_id: string;
-    name: string;
-    block_lot: string;
-    coming: string;
-    guests: string;
-    potluck: string;
-    suggestions: string;
-    created_at: string;
-    updated_at: string;
-  }>();
-  const key = householdKey(reply.name, reply.blockLot);
-  const match =
-    listed.results.find((row) => row.guest_id === reply.guestId) ||
-    listed.results.find((row) => householdKey(row.name, row.block_lot) === key);
+  ).all<StoredRsvp>();
+  const key = blockKey(reply.blockLot);
+  const sameLot = listed.results
+    .filter((row) => blockKey(row.block_lot) === key)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const sameGuest = listed.results.find((row) => row.guest_id === reply.guestId);
+  const match = sameLot[0] || sameGuest;
   if (!match) {
     await env.DB.prepare(
       `INSERT INTO rsvps (guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at)
@@ -380,25 +382,11 @@ async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
       .run();
     return reply;
   }
-  if (match.guest_id !== reply.guestId) {
-    await env.DB.prepare(
-      `INSERT INTO rsvp_history (guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at, replaced_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        match.guest_id,
-        match.name,
-        match.block_lot,
-        match.coming,
-        match.guests,
-        match.potluck,
-        match.suggestions,
-        match.created_at,
-        match.updated_at,
-        reply.updatedAt,
-      )
-      .run();
-  }
+  const extras = listed.results.filter(
+    (row) => row.guest_id !== match.guest_id && (row.guest_id === reply.guestId || blockKey(row.block_lot) === key),
+  );
+  for (const extra of extras) await removeHousehold(env, extra, reply.updatedAt);
+  if (match.guest_id !== reply.guestId) await rememberHistory(env, match, reply.updatedAt);
   await env.DB.prepare(
     `UPDATE rsvps
      SET name = ?, block_lot = ?, coming = ?, guests = ?, potluck = ?, suggestions = ?, updated_at = ?
@@ -418,16 +406,42 @@ async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
   return { ...reply, guestId: match.guest_id, createdAt: match.created_at || reply.createdAt };
 }
 
+async function rememberHistory(env: Env, row: StoredRsvp, replacedAt: string) {
+  await env.DB.prepare(
+    `INSERT INTO rsvp_history (guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at, replaced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      row.guest_id,
+      row.name,
+      row.block_lot,
+      row.coming,
+      row.guests,
+      row.potluck,
+      row.suggestions,
+      row.created_at,
+      row.updated_at,
+      replacedAt,
+    )
+    .run();
+}
+
+async function removeHousehold(env: Env, row: StoredRsvp, replacedAt: string) {
+  await rememberHistory(env, row, replacedAt);
+  await env.DB.prepare("DELETE FROM rsvps WHERE guest_id = ?").bind(row.guest_id).run();
+}
+
 async function upsertSheet(env: Env, reply: Reply, incomingGuestId = reply.guestId) {
   const token = await googleToken(env.GOOGLE_CLIENT_EMAIL!, env.GOOGLE_PRIVATE_KEY!);
   const tab = env.SHEET_TAB || "RSVPs";
-  await ensureHeader(token, env.GOOGLE_SHEET_ID!, tab, COLUMNS);
-  const listed = await sheetsFetch(token, env.GOOGLE_SHEET_ID!, encodeURIComponent(`${tab}!A:I`));
+  const spreadsheetId = env.GOOGLE_SHEET_ID!;
+  await ensureHeader(token, spreadsheetId, tab, COLUMNS);
+  const listed = await sheetsFetch(token, spreadsheetId, encodeURIComponent(`${tab}!A:I`));
   const rows = (listed.values as string[][] | undefined) ?? [];
-  const key = householdKey(reply.name, reply.blockLot);
-  const byGuest = rows.findIndex((row, index) => index > 0 && row[0] === reply.guestId);
-  const byHome = rows.findIndex((row, index) => index > 0 && householdKey(row[1] || "", row[2] || "") === key);
-  const existing = byGuest >= 0 ? byGuest : byHome;
+  const key = blockKey(reply.blockLot);
+  const matches = rows
+    .map((row, index) => ({ row, index }))
+    .filter((item) => item.index > 0 && (item.row[0] === reply.guestId || blockKey(item.row[2] || "") === key));
   const values = [[
     reply.guestId,
     reply.name,
@@ -439,25 +453,36 @@ async function upsertSheet(env: Env, reply: Reply, incomingGuestId = reply.guest
     reply.createdAt,
     reply.updatedAt,
   ]];
-  if (existing >= 0) {
-    const current = rows[existing];
-    if (current[0] && current[0] !== incomingGuestId) {
-      await archiveSheetRow(token, env.GOOGLE_SHEET_ID!, current, reply.updatedAt);
-    }
-    const rowNumber = existing + 1;
+  if (!matches.length) {
     await sheetsFetch(
       token,
-      env.GOOGLE_SHEET_ID!,
-      `${encodeURIComponent(`${tab}!A${rowNumber}:I${rowNumber}`)}?valueInputOption=RAW`,
-      { method: "PUT", body: JSON.stringify({ values }) },
+      spreadsheetId,
+      `${encodeURIComponent(`${tab}!A:I`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      { method: "POST", body: JSON.stringify({ values }) },
     );
     return;
   }
+  const canonical = matches.find((item) => item.row[0] === reply.guestId) || matches[0];
+  const extras = matches.filter((item) => item.index !== canonical.index);
+  for (const extra of extras) await archiveSheetRow(token, spreadsheetId, extra.row, reply.updatedAt);
+  if (canonical.row[0] && canonical.row[0] !== incomingGuestId) {
+    await archiveSheetRow(token, spreadsheetId, canonical.row, reply.updatedAt);
+  }
+  if (extras.length) {
+    await deleteSheetRows(
+      token,
+      spreadsheetId,
+      await sheetIdFor(token, spreadsheetId, tab),
+      extras.map((item) => item.index),
+    );
+  }
+  const removedAbove = extras.filter((item) => item.index < canonical.index).length;
+  const rowNumber = canonical.index + 1 - removedAbove;
   await sheetsFetch(
     token,
-    env.GOOGLE_SHEET_ID!,
-    `${encodeURIComponent(`${tab}!A:I`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    { method: "POST", body: JSON.stringify({ values }) },
+    spreadsheetId,
+    `${encodeURIComponent(`${tab}!A${rowNumber}:I${rowNumber}`)}?valueInputOption=RAW`,
+    { method: "PUT", body: JSON.stringify({ values }) },
   );
 }
 
@@ -489,6 +514,34 @@ async function ensureHeader(token: string, spreadsheetId: string, title: string,
     `${encodeURIComponent(`${title}!A1:${end}1`)}?valueInputOption=RAW`,
     { method: "PUT", body: JSON.stringify({ values: [columns] }) },
   );
+}
+
+async function sheetIdFor(token: string, spreadsheetId: string, title: string) {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) throw new Error("sheet");
+  const data = (await response.json()) as { sheets?: { properties?: { title?: string; sheetId?: number } }[] };
+  const found = (data.sheets || []).find((sheet) => sheet.properties?.title === title);
+  if (found?.properties?.sheetId === undefined) throw new Error("sheet");
+  return found.properties.sheetId;
+}
+
+async function deleteSheetRows(token: string, spreadsheetId: string, sheetId: number, indexes: number[]) {
+  const sorted = [...indexes].sort((a, b) => b - a);
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      requests: sorted.map((index) => ({
+        deleteDimension: {
+          range: { sheetId, dimension: "ROWS", startIndex: index, endIndex: index + 1 },
+        },
+      })),
+    }),
+  });
+  if (!response.ok) throw new Error("sheet");
 }
 
 async function ensureTab(token: string, spreadsheetId: string, title: string) {
