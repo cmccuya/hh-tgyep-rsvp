@@ -61,7 +61,7 @@ export default {
     let sheet: "updated" | "unavailable" = "unavailable";
     try {
       if (env.GOOGLE_SHEET_ID && env.GOOGLE_CLIENT_EMAIL && env.GOOGLE_PRIVATE_KEY) {
-        await upsertSheet(env, saved);
+        await upsertSheet(env, saved, reply.guestId);
         sheet = "updated";
       }
     } catch {
@@ -418,7 +418,7 @@ async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
   return { ...reply, guestId: match.guest_id, createdAt: match.created_at || reply.createdAt };
 }
 
-async function upsertSheet(env: Env, reply: Reply) {
+async function upsertSheet(env: Env, reply: Reply, incomingGuestId = reply.guestId) {
   const token = await googleToken(env.GOOGLE_CLIENT_EMAIL!, env.GOOGLE_PRIVATE_KEY!);
   const tab = env.SHEET_TAB || "RSVPs";
   await ensureHeader(token, env.GOOGLE_SHEET_ID!, tab, COLUMNS);
@@ -441,7 +441,7 @@ async function upsertSheet(env: Env, reply: Reply) {
   ]];
   if (existing >= 0) {
     const current = rows[existing];
-    if (current[0] && current[0] !== reply.guestId) {
+    if (current[0] && current[0] !== incomingGuestId) {
       await archiveSheetRow(token, env.GOOGLE_SHEET_ID!, current, reply.updatedAt);
     }
     const rowNumber = existing + 1;
