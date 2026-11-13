@@ -551,12 +551,12 @@ input, textarea {
   aspect-ratio: 764 / 1024;
   min-height: 0;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   border: 0;
-  border-radius: 8px;
-  background: var(--paper);
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
-  transition: transform 0.28s ease, box-shadow 0.28s ease;
+  transition: transform 0.28s ease;
 }
 
 .stamp-art {
@@ -565,17 +565,9 @@ input, textarea {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  mix-blend-mode: multiply;
   pointer-events: none;
-}
-
-.stamp-light {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(115deg, transparent 32%, rgba(255, 248, 230, 0.72) 50%, transparent 68%);
-  transform: translateX(-130%);
+  filter: drop-shadow(0 8px 12px rgba(70, 50, 30, 0.08));
+  transition: filter 0.28s ease;
 }
 
 .stamp-copy {
@@ -607,14 +599,12 @@ input, textarea {
 .stamp-yes:hover,
 .stamp-yes.on:hover {
   transform: translateY(-6px) scale(1.03);
-  box-shadow: 0 16px 28px rgba(198, 161, 90, 0.38);
 }
 
-.stamp-yes:hover .stamp-light,
-.stamp-no:hover .stamp-light { animation: stamp-light 1.05s ease; }
-
-.stamp-yes.on {
-  box-shadow: 0 12px 28px rgba(198, 161, 90, 0.45);
+.stamp-yes:hover .stamp-art,
+.stamp-yes.on:hover .stamp-art,
+.stamp-yes.on .stamp-art {
+  filter: drop-shadow(0 16px 18px rgba(150, 100, 40, 0.28)) brightness(1.04);
 }
 
 .stamp-note {
@@ -630,20 +620,19 @@ input, textarea {
 .stamp-no:hover,
 .stamp-no.on:hover {
   transform: translateY(3px) rotate(-1.5deg) scale(0.98);
-  box-shadow: 0 8px 18px rgba(90, 110, 125, 0.22);
 }
 
-.stamp-no:hover .stamp-art { filter: saturate(0.75) brightness(0.98); }
+.stamp-no:hover .stamp-art,
+.stamp-no.on:hover .stamp-art,
+.stamp-no.on .stamp-art {
+  filter: drop-shadow(0 16px 18px rgba(70, 100, 120, 0.26)) brightness(1.03);
+}
 
 .stamp-no:hover .stamp-note,
 .stamp-no.on .stamp-note {
   max-height: 2.8rem;
   margin-top: 0.2rem;
   opacity: 1;
-}
-
-.stamp-no.on {
-  box-shadow: 0 10px 22px rgba(90, 110, 125, 0.28);
 }
 
 .stamp:focus-visible {
@@ -687,11 +676,6 @@ input, textarea {
   font-size: 1.6rem;
   color: #7a1c24;
   text-align: center;
-}
-
-@keyframes stamp-light {
-  from { transform: translateX(-130%); }
-  to { transform: translateX(130%); }
 }
 
 .field em, .field-error {
@@ -740,8 +724,7 @@ input, textarea {
   .games.in .rock,
   .seal,
   .mailbox img,
-  .notes i,
-  .stamp-light {
+  .notes i {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
@@ -752,5 +735,4 @@ input, textarea {
   .stamp-no:hover,
   .stamp-yes.on:hover,
   .stamp-no.on:hover { transform: none; }
-  .stamp-light { opacity: 0; }
 }
