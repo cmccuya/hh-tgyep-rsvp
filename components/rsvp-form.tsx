@@ -218,7 +218,7 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
             </span>
             <strong>Regretfully Declines</strong>
             <small>Will miss the fun</small>
-            <em className="stamp-note" aria-hidden="true">We'll miss you at the party! 🥺</em>
+            <em className="stamp-note" aria-hidden="true">We’ll miss you at the party! 🥺</em>
           </button>
         </div>
         {errors.coming ? <em className="field-error">{errors.coming}</em> : null}
