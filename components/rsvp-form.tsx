@@ -72,8 +72,9 @@ export function RsvpForm({ onBack, toolbar }: { onBack: () => void; toolbar?: Re
     setIdentity({ guestId: reply.guestId, createdAt: reply.createdAt });
     setSaving(true);
     try {
-      await shareReply(reply);
-      setSaved(reply);
+      const savedReply = await shareReply(reply);
+      setIdentity({ guestId: savedReply.guestId, createdAt: savedReply.createdAt });
+      setSaved(savedReply);
     } catch {
       setSaveError("We kept this reply on your phone, but it did not reach the shared list. Please submit again.");
     } finally {

@@ -47,15 +47,22 @@ export function rememberReply(reply: Reply) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(reply));
 }
 
-export async function shareReply(reply: Reply): Promise<"shared" | "local"> {
+export async function shareReply(reply: Reply): Promise<Reply> {
   rememberReply(reply);
   const url = process.env.NEXT_PUBLIC_RSVP_URL;
-  if (!url) return "local";
+  if (!url) return reply;
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(reply),
   });
   if (!response.ok) throw new Error("The shared list did not accept this reply.");
-  return "shared";
+  const body = (await response.json()) as { guestId?: string; createdAt?: string };
+  const saved = {
+    ...reply,
+    guestId: body.guestId || reply.guestId,
+    createdAt: body.createdAt || reply.createdAt,
+  };
+  rememberReply(saved);
+  return saved;
 }

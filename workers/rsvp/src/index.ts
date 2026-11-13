@@ -57,42 +57,18 @@ export default {
     const reply = await readReply(request);
     if (!reply) return cors(json({ error: "Check the reply and try again." }, 400));
 
-    await env.DB.prepare(
-      `INSERT INTO rsvps (guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(guest_id) DO UPDATE SET
-         name = excluded.name,
-         block_lot = excluded.block_lot,
-         coming = excluded.coming,
-         guests = excluded.guests,
-         potluck = excluded.potluck,
-         suggestions = excluded.suggestions,
-         updated_at = excluded.updated_at`,
-    )
-      .bind(
-        reply.guestId,
-        reply.name,
-        reply.blockLot,
-        reply.coming,
-        reply.guests,
-        reply.potluck,
-        reply.suggestions,
-        reply.createdAt,
-        reply.updatedAt,
-      )
-      .run();
-
+    const saved = await saveHousehold(env, reply);
     let sheet: "updated" | "unavailable" = "unavailable";
     try {
       if (env.GOOGLE_SHEET_ID && env.GOOGLE_CLIENT_EMAIL && env.GOOGLE_PRIVATE_KEY) {
-        await upsertSheet(env, reply);
+        await upsertSheet(env, saved);
         sheet = "updated";
       }
     } catch {
       sheet = "unavailable";
     }
 
-    return cors(json({ ok: true, guestId: reply.guestId, sheet }));
+    return cors(json({ ok: true, guestId: saved.guestId, createdAt: saved.createdAt, sheet }));
   },
 };
 
@@ -341,18 +317,117 @@ function clean(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function householdKey(name: string, blockLot: string) {
+  const norm = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/\b(block|lot)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
+  return `${norm(name)}|${norm(blockLot)}`;
+}
+
+async function saveHousehold(env: Env, reply: Reply): Promise<Reply> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS rsvp_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guest_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      block_lot TEXT NOT NULL,
+      coming TEXT NOT NULL,
+      guests TEXT NOT NULL DEFAULT '',
+      potluck TEXT NOT NULL DEFAULT '',
+      suggestions TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      replaced_at TEXT NOT NULL
+    )`,
+  ).run();
+  const listed = await env.DB.prepare(
+    "SELECT guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at FROM rsvps",
+  ).all<{
+    guest_id: string;
+    name: string;
+    block_lot: string;
+    coming: string;
+    guests: string;
+    potluck: string;
+    suggestions: string;
+    created_at: string;
+    updated_at: string;
+  }>();
+  const key = householdKey(reply.name, reply.blockLot);
+  const match =
+    listed.results.find((row) => row.guest_id === reply.guestId) ||
+    listed.results.find((row) => householdKey(row.name, row.block_lot) === key);
+  if (!match) {
+    await env.DB.prepare(
+      `INSERT INTO rsvps (guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        reply.guestId,
+        reply.name,
+        reply.blockLot,
+        reply.coming,
+        reply.guests,
+        reply.potluck,
+        reply.suggestions,
+        reply.createdAt,
+        reply.updatedAt,
+      )
+      .run();
+    return reply;
+  }
+  if (match.guest_id !== reply.guestId) {
+    await env.DB.prepare(
+      `INSERT INTO rsvp_history (guest_id, name, block_lot, coming, guests, potluck, suggestions, created_at, updated_at, replaced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        match.guest_id,
+        match.name,
+        match.block_lot,
+        match.coming,
+        match.guests,
+        match.potluck,
+        match.suggestions,
+        match.created_at,
+        match.updated_at,
+        reply.updatedAt,
+      )
+      .run();
+  }
+  await env.DB.prepare(
+    `UPDATE rsvps
+     SET name = ?, block_lot = ?, coming = ?, guests = ?, potluck = ?, suggestions = ?, updated_at = ?
+     WHERE guest_id = ?`,
+  )
+    .bind(
+      reply.name,
+      reply.blockLot,
+      reply.coming,
+      reply.guests,
+      reply.potluck,
+      reply.suggestions,
+      reply.updatedAt,
+      match.guest_id,
+    )
+    .run();
+  return { ...reply, guestId: match.guest_id, createdAt: match.created_at || reply.createdAt };
+}
+
 async function upsertSheet(env: Env, reply: Reply) {
   const token = await googleToken(env.GOOGLE_CLIENT_EMAIL!, env.GOOGLE_PRIVATE_KEY!);
   const tab = env.SHEET_TAB || "RSVPs";
-  const range = encodeURIComponent(`${tab}!A:A`);
-  const listed = await sheetsFetch(token, env.GOOGLE_SHEET_ID!, `${range}`);
+  await ensureHeader(token, env.GOOGLE_SHEET_ID!, tab, COLUMNS);
+  const listed = await sheetsFetch(token, env.GOOGLE_SHEET_ID!, encodeURIComponent(`${tab}!A:I`));
   const rows = (listed.values as string[][] | undefined) ?? [];
-  if (!rows.length) {
-    await sheetsFetch(token, env.GOOGLE_SHEET_ID!, `${encodeURIComponent(`${tab}!A1:I1`)}?valueInputOption=RAW`, {
-      method: "PUT",
-      body: JSON.stringify({ values: [COLUMNS] }),
-    });
-  }
+  const key = householdKey(reply.name, reply.blockLot);
+  const byGuest = rows.findIndex((row, index) => index > 0 && row[0] === reply.guestId);
+  const byHome = rows.findIndex((row, index) => index > 0 && householdKey(row[1] || "", row[2] || "") === key);
+  const existing = byGuest >= 0 ? byGuest : byHome;
   const values = [[
     reply.guestId,
     reply.name,
@@ -364,8 +439,11 @@ async function upsertSheet(env: Env, reply: Reply) {
     reply.createdAt,
     reply.updatedAt,
   ]];
-  const existing = rows.findIndex((row) => row[0] === reply.guestId);
   if (existing >= 0) {
+    const current = rows[existing];
+    if (current[0] && current[0] !== reply.guestId) {
+      await archiveSheetRow(token, env.GOOGLE_SHEET_ID!, current, reply.updatedAt);
+    }
     const rowNumber = existing + 1;
     await sheetsFetch(
       token,
@@ -381,6 +459,53 @@ async function upsertSheet(env: Env, reply: Reply) {
     `${encodeURIComponent(`${tab}!A:I`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values }) },
   );
+}
+
+async function archiveSheetRow(token: string, spreadsheetId: string, row: string[], replacedAt: string) {
+  const title = "Earlier replies";
+  await ensureTab(token, spreadsheetId, title);
+  await ensureHeader(token, spreadsheetId, title, [...COLUMNS, "replaced_at"]);
+  await sheetsFetch(
+    token,
+    spreadsheetId,
+    `${encodeURIComponent(`${title}!A:J`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        values: [[row[0] || "", row[1] || "", row[2] || "", row[3] || "", row[4] || "", row[5] || "", row[6] || "", row[7] || "", row[8] || "", replacedAt]],
+      }),
+    },
+  );
+}
+
+async function ensureHeader(token: string, spreadsheetId: string, title: string, columns: string[]) {
+  const listed = await sheetsFetch(token, spreadsheetId, encodeURIComponent(`${title}!A1:J1`));
+  const header = (listed.values as string[][] | undefined)?.[0];
+  if (header && header[0] === columns[0]) return;
+  const end = String.fromCharCode(64 + columns.length);
+  await sheetsFetch(
+    token,
+    spreadsheetId,
+    `${encodeURIComponent(`${title}!A1:${end}1`)}?valueInputOption=RAW`,
+    { method: "PUT", body: JSON.stringify({ values: [columns] }) },
+  );
+}
+
+async function ensureTab(token: string, spreadsheetId: string, title: string) {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) throw new Error("sheet");
+  const data = (await response.json()) as { sheets?: { properties?: { title?: string } }[] };
+  const titles = (data.sheets || []).map((sheet) => sheet.properties?.title);
+  if (titles.includes(title)) return;
+  const created = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+  });
+  if (!created.ok) throw new Error("sheet");
 }
 
 async function sheetsFetch(token: string, sheetId: string, path: string, init?: RequestInit) {
