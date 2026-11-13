@@ -6,6 +6,8 @@ import { event } from "@/lib/event";
 type Player = {
   playVideo: () => void;
   pauseVideo: () => void;
+  unMute: () => void;
+  setVolume: (volume: number) => void;
 };
 
 declare global {
@@ -50,7 +52,11 @@ export function useCarol() {
         },
         events: {
           onReady: () => {
+            player.current?.unMute();
+            player.current?.setVolume(100);
             if (queued.current) {
+              player.current?.unMute();
+              player.current?.setVolume(100);
               player.current?.playVideo();
               setPlaying(true);
             }
@@ -82,6 +88,8 @@ export function useCarol() {
 
   function play() {
     queued.current = true;
+    player.current?.unMute();
+    player.current?.setVolume(100);
     player.current?.playVideo();
     setPlaying(true);
   }
@@ -96,5 +104,9 @@ export function useCarol() {
 }
 
 export function CarolFrame() {
-  return <div id="carol-player" className="carol-frame" />;
+  return (
+    <div className="carol-frame">
+      <div id="carol-player" />
+    </div>
+  );
 }

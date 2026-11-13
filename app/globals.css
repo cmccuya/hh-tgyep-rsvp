@@ -27,15 +27,18 @@ img { max-width: 100%; height: auto; }
 .stage {
   position: relative;
   min-height: 100vh;
-  background: #c5d7e0 url("/art/snow.jpg") center top / cover no-repeat fixed;
+  background: #c5d7e0 var(--snow, url("/art/snow.jpg")) center top / cover no-repeat fixed;
 }
 
 .carol-frame {
   position: fixed;
-  width: 280px;
-  height: 158px;
-  left: -9999px;
-  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 200px;
+  height: 112px;
+  opacity: 0.01;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .snow-canvas {
@@ -79,7 +82,10 @@ img { max-width: 100%; height: auto; }
   color: var(--berry-deep);
 }
 
-.cover h1 { font-size: clamp(2.15rem, 9vw, 4.1rem); }
+.cover h1 {
+  font-size: clamp(1.55rem, 7.4vw, 3.6rem);
+  white-space: nowrap;
+}
 
 .frame-copy h1 {
   font-size: clamp(1.8rem, 5.6vw, 2.35rem);
@@ -284,7 +290,38 @@ textarea:focus-visible {
   margin-top: 0.25rem;
   font-family: var(--font-display), Georgia, serif;
   font-weight: 560;
-  font-size: clamp(1.5rem, 5vw, 2rem);
+  font-size: clamp(1.35rem, 4.6vw, 1.8rem);
+}
+
+.plaque-copy em {
+  margin-top: 0.15rem;
+  font-style: normal;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+.count {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+  margin: 0.8rem 1.1rem 0;
+  text-align: center;
+}
+
+.count strong {
+  display: block;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 560;
+  color: var(--berry-deep);
+}
+
+.count small {
+  color: var(--ink-soft);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.62rem;
 }
 
 .note, .quiet {
@@ -307,6 +344,8 @@ textarea:focus-visible {
 
 .ornament { display: block; margin: 0.4rem auto; }
 .tree { width: min(280px, 72%); }
+.feast { width: min(440px, 94%); }
+.prizes { width: min(230px, 58vw) !important; }
 .sleigh { width: min(460px, 92%); }
 
 .tree-slot, .sleigh-slot { opacity: 0; }

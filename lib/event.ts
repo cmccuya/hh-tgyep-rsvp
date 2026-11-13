@@ -4,9 +4,8 @@ export const event = {
   welcome:
     "Hamana Homes is hosting a Thanksgiving and year-end party, and we’d love everyone to be part of it.",
   dateLabel: "Date & time",
-  dateValue: "To be decided",
-  dateNote:
-    "A quick poll will be posted soon so we can pick a date that works best for the majority.",
+  dateValue: "December 19",
+  dateTime: "6:00 PM",
   placeLabel: "Location",
   place: "Hamana Homes Club House",
   placeDetail: "Sto. Rosario, Magalang, Pampanga",

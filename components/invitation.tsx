@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { RiseIn, WriteIn, letterDelay, useInView, wordDelay } from "@/components/motion";
+import { Countdown } from "@/components/countdown";
 import { CarolFrame, useCarol } from "@/components/music";
 import { RsvpForm } from "@/components/rsvp-form";
 import { Snow } from "@/components/snow";
@@ -122,14 +123,13 @@ export function Invitation() {
               <p aria-label={event.dateLabel}>
                 <RiseIn text={event.dateLabel} active={date.shown} />
               </p>
-              <strong aria-label={event.dateValue}>
+              <strong aria-label={`${event.dateValue}, ${event.dateTime}`}>
                 <WriteIn text={event.dateValue} active={date.shown} delay={wordDelay(event.dateLabel)} />
               </strong>
+              <em>{event.dateTime}</em>
             </div>
           </div>
-          <p className="note" aria-label={event.dateNote}>
-            <RiseIn text={event.dateNote} active={date.shown} delay={letterDelay(event.dateValue, 80)} />
-          </p>
+          <Countdown />
 
           <section className="block" ref={place.ref}>
             <h2 aria-label={event.placeLabel}>
@@ -146,10 +146,6 @@ export function Invitation() {
             </a>
           </section>
 
-          <div className={`tree-slot ${tree.shown ? "in" : ""}`} ref={tree.ref}>
-            <Image className="ornament tree" src="/art/tree.png" alt="Watercolor Christmas tree with wrapped gifts" width={900} height={900} />
-          </div>
-
           <section className="block" ref={food.ref}>
             <h2 aria-label={event.foodLabel}>
               <RiseIn text={event.foodLabel} active={food.shown} />
@@ -157,6 +153,7 @@ export function Invitation() {
             <p aria-label={event.food}>
               <RiseIn text={event.food} active={food.shown} delay={wordDelay(event.foodLabel)} />
             </p>
+            <Image className="ornament feast" src="/art/feast.png" alt="Watercolor holiday feast" width={934} height={621} />
           </section>
 
           <section className="block" ref={gift.ref}>
@@ -166,6 +163,9 @@ export function Invitation() {
             <p aria-label={event.gift}>
               <RiseIn text={event.gift} active={gift.shown} delay={wordDelay(event.giftLabel)} />
             </p>
+            <div className={`tree-slot ${tree.shown ? "in" : ""}`} ref={tree.ref}>
+              <Image className="ornament tree" src="/art/tree.png" alt="Watercolor Christmas tree with wrapped gifts" width={900} height={900} />
+            </div>
           </section>
 
           <div className={`sleigh-slot ${sleigh.shown ? "in" : ""}`} ref={sleigh.ref}>
@@ -182,9 +182,7 @@ export function Invitation() {
 
           <section className={`games ${games.shown ? "in" : ""}`} ref={games.ref}>
             <div className="pop">
-              <div className="rock">
-                <Image src="/art/nutcracker.png" alt="Watercolor nutcracker" width={900} height={1205} />
-              </div>
+              <Image className="ornament prizes" src="/art/prizes.png" alt="Hanging Christmas prizes" width={678} height={863} />
             </div>
             <div>
               <h2 aria-label={event.gamesLabel}>
@@ -209,19 +207,14 @@ export function Invitation() {
           </div>
 
           <div className={`rsvp-cta ${reply.shown ? "in" : ""}`} ref={reply.ref}>
-            <button
-              type="button"
-              className={`envelope-open ${lifting ? "lift" : ""}`}
-              onClick={openReply}
-              aria-label="Kindly RSVP. Send your reply."
-            >
+            <button type="button" className="envelope-open" onClick={openReply} aria-label="Open the reply card">
               <span className="envelope-bob">
                 <Image src="/art/envelope.png" alt="" width={900} height={900} />
-                <span className="letter script" aria-label={event.rsvp}>
-                  <WriteIn text={event.rsvp} active={reply.shown} />
-                </span>
               </span>
             </button>
+            <p className="script" aria-label={event.rsvp}>
+              <WriteIn text={event.rsvp} active={reply.shown} />
+            </p>
             <button type="button" className="btn btn-berry" onClick={openReply}>
               Send your reply
             </button>
