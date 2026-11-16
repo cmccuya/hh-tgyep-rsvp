@@ -11,6 +11,7 @@ export type Household = {
   name: string;
   blockLot: string;
   email: string;
+  phone?: string;
   role?: "admin" | "resident";
 };
 
@@ -21,10 +22,20 @@ export function readHousehold(): Household | null {
     if (!raw || !token) return null;
     const parsed = JSON.parse(raw) as Partial<Household>;
     if (!parsed.name || !parsed.blockLot || !parsed.email) return null;
-    return { name: parsed.name, blockLot: parsed.blockLot, email: parsed.email };
+    return {
+      name: parsed.name,
+      blockLot: parsed.blockLot,
+      email: parsed.email,
+      phone: parsed.phone || "",
+      role: parsed.role,
+    };
   } catch {
     return null;
   }
+}
+
+export function rememberHousehold(household: Household) {
+  sessionStorage.setItem(PROFILE_KEY, JSON.stringify(household));
 }
 
 export function authHeader(): Record<string, string> {

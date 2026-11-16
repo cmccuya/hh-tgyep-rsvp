@@ -34,6 +34,7 @@ export function HouseholdFile() {
   const email = (params.get("email") || "").trim().toLowerCase();
   const [file, setFile] = useState<File | null>(null);
   const [missing, setMissing] = useState("");
+  const [viewer, setViewer] = useState("");
 
   useEffect(() => {
     const saved = readHousehold();
@@ -50,6 +51,7 @@ export function HouseholdFile() {
           router.replace("/dashboard");
           return;
         }
+        setViewer((account as { email?: string }).email || saved.email);
         const detail = await fetch(url, { headers: authHeader() });
         const body = (await detail.json()) as { account?: File; error?: string };
         if (!detail.ok || !body.account) {
@@ -111,6 +113,27 @@ export function HouseholdFile() {
               <dd>{filedOn(file.createdAt)}</dd>
             </div>
           </dl>
+        ) : null}
+        {file && file.role === "admin" && file.email !== viewer ? (
+          <div className="composer-actions">
+            <button
+              type="button"
+              onClick={async () => {
+                if (!window.confirm("Remove admin access for this household?")) return;
+                const url = portalApi("/admin/accounts");
+                if (!url) return;
+                const response = await fetch(url, {
+                  method: "POST",
+                  headers: { "content-type": "application/json", ...authHeader() },
+                  body: JSON.stringify({ email: file.email, action: "resident" }),
+                });
+                if (!response.ok) return;
+                setFile({ ...file, role: "resident" });
+              }}
+            >
+              Remove admin
+            </button>
+          </div>
         ) : null}
       </article>
     </main>

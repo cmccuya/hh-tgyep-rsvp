@@ -63,6 +63,9 @@ export default {
     if (request.method === "GET" && url.pathname === "/auth/me") {
       return cors(await currentAccount(request, env));
     }
+    if (request.method === "POST" && url.pathname === "/auth/profile") {
+      return cors(await updateProfile(request, env));
+    }
     if (request.method === "GET" && url.pathname === "/admin/accounts") {
       return cors(await listAccounts(request, env));
     }
@@ -380,14 +383,19 @@ async function decideAccount(request: Request, env: Env) {
     return json({ error: "Check the account and try again." }, 400);
   }
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const action = body.action === "approve" || body.action === "admin" ? body.action : "";
+  const action = body.action === "approve" || body.action === "admin" || body.action === "resident" ? body.action : "";
   if (!email || !action) return json({ error: "Check the account and try again." }, 400);
-  if (action === "admin" && email === admin.email) return json({ error: "You are already an admin." }, 400);
-  const found = await env.DB.prepare("SELECT email, status FROM accounts WHERE email = ?").bind(email).all<{ email: string; status: string }>();
+  if ((action === "admin" || action === "resident") && email === admin.email) {
+    return json({ error: "Another admin has to change your access." }, 400);
+  }
+  const found = await env.DB.prepare("SELECT email, status, role FROM accounts WHERE email = ?").bind(email).all<{ email: string; status: string; role: string }>();
   const account = found.results[0];
   if (!account) return json({ error: "That account is not here." }, 404);
   if (action === "approve") {
     await env.DB.prepare("UPDATE accounts SET status = 'approved' WHERE email = ?").bind(email).run();
+  } else if (action === "resident") {
+    if (account.role !== "admin") return json({ error: "This household is not an admin." }, 400);
+    await env.DB.prepare("UPDATE accounts SET role = 'resident' WHERE email = ?").bind(email).run();
   } else {
     if (account.status !== "approved") return json({ error: "Approve this household first." }, 400);
     await env.DB.prepare("UPDATE accounts SET role = 'admin' WHERE email = ?").bind(email).run();
@@ -415,6 +423,46 @@ async function readAccountFields(request: Request) {
   const blockLot = typeof body.blockLot === "string" ? body.blockLot.trim().slice(0, 80) : "";
   if (!email || !password || !name || !phone || !blockLot) return null;
   return { email, password, name, phone, blockLot };
+}
+
+async function updateProfile(request: Request, env: Env) {
+  const account = await accountFromRequest(request, env);
+  if (!account) return json({ error: "Sign in again." }, 401);
+  let body: { name?: unknown; email?: unknown; phone?: unknown; blockLot?: unknown; password?: unknown };
+  try {
+    body = JSON.parse(await request.text()) as typeof body;
+  } catch {
+    return json({ error: "Check your details and try again." }, 400);
+  }
+  const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 160) : "";
+  const phone = typeof body.phone === "string" ? body.phone.trim().slice(0, 40) : "";
+  const blockLot = typeof body.blockLot === "string" ? body.blockLot.trim().slice(0, 80) : "";
+  const password = typeof body.password === "string" ? body.password.slice(0, 200) : "";
+  if (!name || !email || !phone || !blockLot) return json({ error: "Add your name, email, phone number, and block and lot." }, 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Use a real email address." }, 400);
+  if (phone.replace(/\D/g, "").length < 7) return json({ error: "Add a phone number." }, 400);
+  if (password && password.length < 6) return json({ error: "Use at least 6 characters for the new password." }, 400);
+  if (email !== account.email) {
+    const taken = await env.DB.prepare("SELECT email FROM accounts WHERE email = ?").bind(email).all<{ email: string }>();
+    if (taken.results[0]) return json({ error: "That email already has an account." }, 409);
+  }
+  if (password) {
+    const salt = [...crypto.getRandomValues(new Uint8Array(16))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    await env.DB.prepare(
+      "UPDATE accounts SET name = ?, email = ?, phone = ?, block_lot = ?, password_salt = ?, password_hash = ? WHERE email = ?",
+    )
+      .bind(name, email, phone, blockLot, salt, await hashPassword(password, salt), account.email)
+      .run();
+  } else {
+    await env.DB.prepare("UPDATE accounts SET name = ?, email = ?, phone = ?, block_lot = ? WHERE email = ?")
+      .bind(name, email, phone, blockLot, account.email)
+      .run();
+  }
+  if (email !== account.email) {
+    await env.DB.prepare("UPDATE sessions SET email = ? WHERE email = ?").bind(email, account.email).run();
+  }
+  return json({ name, email, phone, blockLot, role: account.role });
 }
 
 async function currentAccount(request: Request, env: Env) {
@@ -539,17 +587,18 @@ async function accountFromRequest(request: Request, env: Env) {
   if (!token) return null;
   await ensureAccounts(env);
   const found = await env.DB.prepare(
-    `SELECT accounts.email, accounts.name, accounts.block_lot, accounts.role, accounts.status
+    `SELECT accounts.email, accounts.name, accounts.phone, accounts.block_lot, accounts.role, accounts.status
      FROM sessions JOIN accounts ON accounts.email = sessions.email
      WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
   )
     .bind(await sha256(token), new Date().toISOString())
-    .all<{ email: string; name: string; block_lot: string; role: string; status: string }>();
+    .all<{ email: string; name: string; phone: string; block_lot: string; role: string; status: string }>();
   const account = found.results[0];
   if (!account || account.status !== "approved") return null;
   return {
     email: account.email,
     name: account.name,
+    phone: account.phone || "",
     blockLot: account.block_lot,
     role: account.role === "admin" ? "admin" : "resident",
   };

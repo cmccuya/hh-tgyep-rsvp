@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { event } from "@/lib/event";
 import { readReply } from "@/lib/reply";
-import { authHeader, portalApi, readHousehold, type Household } from "@/components/portal-gate";
+import { authHeader, portalApi, readHousehold, rememberHousehold, type Household } from "@/components/portal-gate";
 import { Desk, type Post } from "@/components/portal-desk";
 
 type Room = "home" | "notices" | "events" | "household" | "documents" | "desk" | "residents";
@@ -84,7 +84,8 @@ export function PortalHome() {
       });
   }, [router]);
 
-  async function decide(email: string, action: "approve" | "admin") {
+  async function decide(email: string, action: "approve" | "admin" | "resident") {
+    if (action === "resident" && !window.confirm("Remove admin access for this household?")) return;
     const url = portalApi("/admin/accounts");
     if (!url) return;
     const response = await fetch(url, {
@@ -206,6 +207,10 @@ export function PortalHome() {
                 <dd>{household.blockLot}</dd>
               </div>
               <div>
+                <dt>Phone number</dt>
+                <dd>{household.phone || "Not given"}</dd>
+              </div>
+              <div>
                 <dt>Place</dt>
                 <dd>Sto. Rosario, Magalang, Pampanga</dd>
               </div>
@@ -214,6 +219,7 @@ export function PortalHome() {
                 <dd>{reply ? (reply.coming === "yes" ? `Coming${reply.guests ? `, ${reply.guests} guests` : ""}` : "Regretfully declines") : "Not sent from this phone yet"}</dd>
               </div>
             </dl>
+            <ProfileForm household={household} onSaved={setHousehold} />
           </article>
         ) : null}
 
@@ -241,7 +247,13 @@ export function PortalHome() {
                         Approve
                       </button>
                     ) : person.role === "admin" ? (
-                      <span>{person.email === household.email ? "You" : "Admin"}</span>
+                      person.email === household.email ? (
+                        <span>You</span>
+                      ) : (
+                        <button type="button" onClick={() => decide(person.email, "resident")}>
+                          Remove admin
+                        </button>
+                      )
                     ) : (
                       <button type="button" onClick={() => decide(person.email, "admin")}>
                         Make admin
@@ -280,6 +292,85 @@ export function PortalHome() {
         ) : null}
       </section>
     </main>
+  );
+}
+
+function ProfileForm({ household, onSaved }: { household: Household; onSaved: (next: Household) => void }) {
+  const [name, setName] = useState(household.name);
+  const [email, setEmail] = useState(household.email);
+  const [phone, setPhone] = useState(household.phone || "");
+  const [blockLot, setBlockLot] = useState(household.blockLot);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    setName(household.name);
+    setEmail(household.email);
+    setPhone(household.phone || "");
+    setBlockLot(household.blockLot);
+  }, [household.name, household.email, household.phone, household.blockLot]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    const url = portalApi("/auth/profile");
+    if (!url) return;
+    setPending(true);
+    setError("");
+    setSaved("");
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeader() },
+        body: JSON.stringify({ name, email, phone, blockLot, password }),
+      });
+      const body = (await response.json()) as Household & { error?: string };
+      if (!response.ok || !body.name || !body.email || !body.blockLot) {
+        setError(body.error || "Those details could not be saved.");
+        return;
+      }
+      const next = { ...household, name: body.name, email: body.email, phone: body.phone || phone, blockLot: body.blockLot, role: body.role || household.role };
+      rememberHousehold(next);
+      onSaved(next);
+      setPassword("");
+      setSaved("Your details are saved.");
+    } catch {
+      setError("The village could not be reached. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form className="composer" onSubmit={save}>
+      <p className="eyebrow">Your details</p>
+      <label>
+        Name
+        <input value={name} onChange={(event) => setName(event.target.value)} />
+      </label>
+      <label>
+        Email
+        <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+      </label>
+      <label>
+        Phone number
+        <input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} />
+      </label>
+      <label>
+        Block and lot
+        <input value={blockLot} onChange={(event) => setBlockLot(event.target.value)} />
+      </label>
+      <label>
+        New password
+        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leave blank to keep it" />
+      </label>
+      {error ? <p className="gate-error">{error}</p> : null}
+      {saved ? <p>{saved}</p> : null}
+      <div className="composer-actions">
+        <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save my details"}</button>
+      </div>
+    </form>
   );
 }
 
