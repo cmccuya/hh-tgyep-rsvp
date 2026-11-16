@@ -25,7 +25,7 @@ export function readHousehold(): Household | null {
   }
 }
 
-export function authHeader() {
+export function authHeader(): Record<string, string> {
   const token = sessionStorage.getItem(TOKEN_KEY);
   return token ? { authorization: `Bearer ${token}` } : {};
 }
