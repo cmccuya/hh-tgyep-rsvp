@@ -54,6 +54,18 @@ export default {
     if (request.method === "POST" && url.pathname === "/sign-in") {
       return cors(await recordSignIn(request, env));
     }
+    if (request.method === "POST" && url.pathname === "/auth/login") {
+      return cors(await login(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/auth/me") {
+      return cors(await currentAccount(request, env));
+    }
+    if (request.method === "POST" && url.pathname === "/auth/logout") {
+      return cors(await logout(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/notices") {
+      return cors(await residentNotices(request, env));
+    }
     if (request.method === "GET" && url.pathname === "/sign-ins") {
       return signInLog(request, env, url);
     }
@@ -250,6 +262,157 @@ async function recordSignIn(request: Request, env: Env) {
   const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
   const blockLot = typeof body.blockLot === "string" ? body.blockLot.trim().slice(0, 80) : "";
   if (!name || !blockLot) return json({ error: "Add a name and a block and lot." }, 400);
+  await saveSignIn(request, env, name, blockLot);
+  return json({ ok: true });
+}
+
+async function login(request: Request, env: Env) {
+  let body: { email?: unknown; password?: unknown };
+  try {
+    body = JSON.parse(await request.text()) as { email?: unknown; password?: unknown };
+  } catch {
+    return json({ error: "Check the email and password." }, 400);
+  }
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 160) : "";
+  const password = typeof body.password === "string" ? body.password.slice(0, 200) : "";
+  if (!email || !password) return json({ error: "Enter your email and password." }, 400);
+  await ensureAccounts(env);
+  const found = await env.DB.prepare(
+    "SELECT email, name, block_lot, password_salt, password_hash FROM accounts WHERE email = ?",
+  )
+    .bind(email)
+    .all<{ email: string; name: string; block_lot: string; password_salt: string; password_hash: string }>();
+  const account = found.results[0];
+  const hash = account ? await hashPassword(password, account.password_salt) : await hashPassword(password, "missing-account");
+  if (!account || !safeEqual(hash, account.password_hash)) {
+    return json({ error: "That email or password does not match an account." }, 401);
+  }
+  const token = [...crypto.getRandomValues(new Uint8Array(32))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  await env.DB.prepare("INSERT INTO sessions (token_hash, email, expires_at) VALUES (?, ?, ?)").bind(await sha256(token), email, expires).run();
+  await saveSignIn(request, env, account.name, account.block_lot);
+  return json({ token, name: account.name, email: account.email, blockLot: account.block_lot });
+}
+
+async function currentAccount(request: Request, env: Env) {
+  const account = await accountFromRequest(request, env);
+  if (!account) return json({ error: "Sign in again." }, 401);
+  return json(account);
+}
+
+async function logout(request: Request, env: Env) {
+  const token = bearer(request);
+  if (token) {
+    await ensureAccounts(env);
+    await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256(token)).run();
+  }
+  return json({ ok: true });
+}
+
+async function residentNotices(request: Request, env: Env) {
+  const account = await accountFromRequest(request, env);
+  if (!account) return json({ error: "Sign in again." }, 401);
+  return json({
+    notices: [
+      {
+        tag: "Admin office",
+        title: "Admin office hours",
+        when: "Nov 10",
+        body: "The Residential & Facilities Management Office is open Monday to Friday, 8:00 AM to 5:00 PM, with lunch from 12:00 NN to 1:00 PM. Saturday is 8:00 AM to 12:00 NN. Sunday and holidays are closed.",
+      },
+      {
+        tag: "Water",
+        title: "Scheduled water interruption",
+        when: "Nov 5",
+        body: "On November 5, 2026, from 9:00 AM to 5:00 PM, water service was scheduled to pause for the water meter stubout relocation. Affected areas: Block 25 (Lots 1–46), Block 26, Block 32, Block 33, and Block 34. Water may look discolored when it returns. See Circular No. 2026-075.",
+      },
+      {
+        tag: "Holiday",
+        title: "Admin office closed for Undas",
+        when: "Nov 2",
+        body: "The Administration Office was closed on November 2, 2026 for All Souls’ Day, an additional special non-working day under Proclamation No. 1006. Regular office operations resumed on November 3. Urgent concerns go through the Security Office.",
+      },
+      {
+        tag: "Invitation",
+        title: "Paws, Pose & Win",
+        when: "Oct 24",
+        body: "The Magalang Grand Open House invited residents on October 24, 2026, 8:00 AM to 5:00 PM, at the retail area. Pet owners could join the costume activity, a complimentary treat, and the Facebook photo contest through November 7. The office number is 0953-802-7303.",
+      },
+      {
+        tag: "Pool",
+        title: "Swimming pool temporarily closed",
+        when: "Oct 2",
+        body: "The HHM swimming pool was closed until further notice after heavy rain, for water quality checks, cleaning, and maintenance. Questions go to the Residential Management Office at 0953-802-7303.",
+      },
+    ],
+  });
+}
+
+async function accountFromRequest(request: Request, env: Env) {
+  const token = bearer(request);
+  if (!token) return null;
+  await ensureAccounts(env);
+  const found = await env.DB.prepare(
+    `SELECT accounts.email, accounts.name, accounts.block_lot
+     FROM sessions JOIN accounts ON accounts.email = sessions.email
+     WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
+  )
+    .bind(await sha256(token), new Date().toISOString())
+    .all<{ email: string; name: string; block_lot: string }>();
+  const account = found.results[0];
+  if (!account) return null;
+  return { email: account.email, name: account.name, blockLot: account.block_lot };
+}
+
+async function ensureAccounts(env: Env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS accounts (
+      email TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      block_lot TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+}
+
+async function hashPassword(password: string, salt: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: new TextEncoder().encode(salt), iterations: 100000, hash: "SHA-256" },
+    key,
+    256,
+  );
+  return [...new Uint8Array(bits)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function bearer(request: Request) {
+  const header = request.headers.get("authorization") || "";
+  const match = header.match(/^Bearer\s+([a-f0-9]+)$/i);
+  return match?.[1] || "";
+}
+
+function safeEqual(left: string, right: string) {
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return diff === 0;
+}
+
+async function saveSignIn(request: Request, env: Env, name: string, blockLot: string) {
   const ip = request.headers.get("cf-connecting-ip") || "Unknown";
   const { device, browser } = describeAgent(request.headers.get("user-agent") || "");
   const cf = (request as Request & { cf?: { city?: string; region?: string; country?: string } }).cf;
@@ -261,7 +424,6 @@ async function recordSignIn(request: Request, env: Env) {
   )
     .bind(name, blockLot, ip, device, browser, place, new Date().toISOString())
     .run();
-  return json({ ok: true });
 }
 
 async function ensureSignIns(env: Env) {
@@ -772,7 +934,7 @@ function json(body: unknown, status = 200) {
 function cors(response: Response) {
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", "*");
-  headers.set("access-control-allow-methods", "POST, OPTIONS");
-  headers.set("access-control-allow-headers", "content-type");
+  headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+    headers.set("access-control-allow-headers", "content-type, authorization");
   return new Response(response.body, { status: response.status, headers });
 }

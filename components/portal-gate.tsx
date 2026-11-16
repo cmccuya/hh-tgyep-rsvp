@@ -3,50 +3,82 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const STORAGE_KEY = "hamana-portal";
+const PROFILE_KEY = "hamana-portal";
+const TOKEN_KEY = "hamana-portal-token";
 
 export type Household = {
   name: string;
   blockLot: string;
+  email: string;
 };
 
 export function readHousehold(): Household | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
+    const raw = sessionStorage.getItem(PROFILE_KEY);
+    const token = sessionStorage.getItem(TOKEN_KEY);
+    if (!raw || !token) return null;
     const parsed = JSON.parse(raw) as Partial<Household>;
-    if (!parsed.name || !parsed.blockLot) return null;
-    return { name: parsed.name, blockLot: parsed.blockLot };
+    if (!parsed.name || !parsed.blockLot || !parsed.email) return null;
+    return { name: parsed.name, blockLot: parsed.blockLot, email: parsed.email };
   } catch {
     return null;
   }
 }
 
+export function authHeader() {
+  const token = sessionStorage.getItem(TOKEN_KEY);
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+function api(path: string) {
+  const base = process.env.NEXT_PUBLIC_RSVP_URL;
+  if (!base) return "";
+  return new URL(path, base).href;
+}
+
 export function Gate() {
   const router = useRouter();
-  const [name, setName] = useState("Cinderella Cuya");
-  const [blockLot, setBlockLot] = useState("38-16");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
-  function enter(event: FormEvent) {
+  async function enter(event: FormEvent) {
     event.preventDefault();
-    const household = { name: name.trim(), blockLot: blockLot.trim() };
-    if (!household.name || !household.blockLot) {
-      setError("Add your name and your block and lot.");
+    const address = email.trim().toLowerCase();
+    if (!address || !password) {
+      setError("Enter your email and password.");
       return;
     }
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(household));
-    const rsvpUrl = process.env.NEXT_PUBLIC_RSVP_URL;
-    if (rsvpUrl) {
-      const signInUrl = new URL("/sign-in", rsvpUrl).href;
-      fetch(signInUrl, {
-        method: "POST",
-        headers: { "content-type": "text/plain" },
-        body: JSON.stringify(household),
-        keepalive: true,
-      }).catch(() => undefined);
+    const url = api("/auth/login");
+    if (!url) {
+      setError("The gate is not connected yet.");
+      return;
     }
-    router.push("/dashboard");
+    setPending(true);
+    setError("");
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: address, password }),
+      });
+      const body = (await response.json()) as { token?: string; name?: string; blockLot?: string; email?: string; error?: string };
+      if (!response.ok || !body.token || !body.name || !body.blockLot) {
+        setError(body.error || "That email or password does not match an account.");
+        return;
+      }
+      sessionStorage.setItem(TOKEN_KEY, body.token);
+      sessionStorage.setItem(
+        PROFILE_KEY,
+        JSON.stringify({ name: body.name, blockLot: body.blockLot, email: body.email || address }),
+      );
+      router.push("/dashboard");
+    } catch {
+      setError("The gate could not be reached. Try again.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -62,20 +94,20 @@ export function Gate() {
         </div>
       </section>
       <section className="gate-card">
-        <p className="eyebrow">Resident gate</p>
+        <p className="eyebrow">Resident account</p>
         <h2>Come in, neighbor.</h2>
-        <p className="lede">The notice board, the club house calendar, and your household live just inside.</p>
+        <p className="lede">Only a household with an account can open the notice board.</p>
         <form onSubmit={enter}>
           <label>
-            Your name
-            <input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
+            Email
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
           </label>
           <label>
-            Block and lot
-            <input value={blockLot} onChange={(event) => setBlockLot(event.target.value)} autoComplete="off" />
+            Password
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
           </label>
           {error ? <p className="gate-error">{error}</p> : null}
-          <button type="submit">Step inside</button>
+          <button type="submit" disabled={pending}>{pending ? "Checking…" : "Sign in"}</button>
         </form>
       </section>
     </main>

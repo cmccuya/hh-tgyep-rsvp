@@ -5,30 +5,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { event } from "@/lib/event";
 import { readReply } from "@/lib/reply";
-import { readHousehold, type Household } from "@/components/portal-gate";
+import { authHeader, readHousehold, type Household } from "@/components/portal-gate";
 
 type Room = "home" | "notices" | "events" | "household" | "documents";
 
-const notices = [
-  {
-    tag: "Club house",
-    title: "Thanksgiving & year-end party",
-    when: "Dec 19",
-    body: "Saturday, December 19 at 6:00 PM in the club house. One potluck dish and one gift per household.",
-  },
-  {
-    tag: "Village",
-    title: "Games for grownups and kids",
-    when: "This month",
-    body: "Prizes are planned for both. If you have a theme or a game in mind, add it on your party reply.",
-  },
-  {
-    tag: "Gate",
-    title: "Tell the guard your lot",
-    when: "Standing",
-    body: "Visitors for the club house should give the household’s block and lot. Yours is on your plaque.",
-  },
-];
+type Notice = { tag: string; title: string; when: string; body: string };
 
 const rooms: { id: Room; label: string }[] = [
   { id: "home", label: "Home" },
@@ -59,19 +40,42 @@ export function PortalHome() {
   const [household, setHousehold] = useState<Household | null>(null);
   const [room, setRoom] = useState<Room>("home");
   const [reply, setReply] = useState<ReturnType<typeof readReply>>(null);
+  const [notices, setNotices] = useState<Notice[]>([]);
 
   useEffect(() => {
     const saved = readHousehold();
-    if (!saved) {
+    const base = process.env.NEXT_PUBLIC_RSVP_URL;
+    if (!saved || !base) {
       router.replace("/login");
       return;
     }
-    setHousehold(saved);
-    setReply(readReply());
+    const me = new URL("/auth/me", base).href;
+    const board = new URL("/notices", base).href;
+    fetch(me, { headers: authHeader() })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("signed out");
+        const account = (await response.json()) as Household;
+        setHousehold(account);
+        setReply(readReply());
+        const notes = await fetch(board, { headers: authHeader() });
+        if (!notes.ok) throw new Error("signed out");
+        const body = (await notes.json()) as { notices?: Notice[] };
+        setNotices(body.notices || []);
+      })
+      .catch(() => {
+        sessionStorage.removeItem("hamana-portal");
+        sessionStorage.removeItem("hamana-portal-token");
+        router.replace("/login");
+      });
   }, [router]);
 
   function leave() {
+    const base = process.env.NEXT_PUBLIC_RSVP_URL;
+    if (base) {
+      fetch(new URL("/auth/logout", base).href, { method: "POST", headers: authHeader() }).catch(() => undefined);
+    }
     sessionStorage.removeItem("hamana-portal");
+    sessionStorage.removeItem("hamana-portal-token");
     router.replace("/login");
   }
 
@@ -87,7 +91,7 @@ export function PortalHome() {
           {rooms.map((item) => (
             <button key={item.id} type="button" className={room === item.id ? "on" : ""} onClick={() => setRoom(item.id)}>
               {item.label}
-              {item.id === "notices" ? <em>3</em> : null}
+              {item.id === "notices" && notices.length ? <em>{notices.length}</em> : null}
             </button>
           ))}
         </nav>
