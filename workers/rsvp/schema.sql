@@ -28,5 +28,6 @@ CREATE TABLE IF NOT EXISTS visit_sessions (
   place TEXT NOT NULL DEFAULT '',
   reported_seconds INTEGER NOT NULL DEFAULT 0,
   pages TEXT NOT NULL DEFAULT '',
-  last_seen TEXT NOT NULL DEFAULT ''
+  last_seen TEXT NOT NULL DEFAULT '',
+  started_at TEXT NOT NULL DEFAULT ''
 );

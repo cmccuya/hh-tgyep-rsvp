@@ -90,8 +90,8 @@ async function recordVisit(request: Request, env: Env) {
   const seconds = Math.max(previous, report.seconds);
   const pages = addPage(found.results[0]?.pages ?? "", report.page);
   await env.DB.prepare(
-    `INSERT INTO visit_sessions (session_id, ip, device, browser, place, reported_seconds, pages, last_seen)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO visit_sessions (session_id, ip, device, browser, place, reported_seconds, pages, last_seen, started_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(session_id) DO UPDATE SET
        reported_seconds = excluded.reported_seconds,
        pages = excluded.pages,
@@ -100,7 +100,7 @@ async function recordVisit(request: Request, env: Env) {
        place = excluded.place,
        last_seen = excluded.last_seen`,
   )
-    .bind(sessionId, ip, device, browser, place, seconds, pages, seen)
+    .bind(sessionId, ip, device, browser, place, seconds, pages, seen, seen)
     .run();
   return json({ ok: true });
 }
@@ -150,7 +150,7 @@ async function visitLog(_request: Request, env: Env, url: URL) {
   const key = url.searchParams.get("key") || "";
   if (!env.VISITS_KEY || key !== env.VISITS_KEY) return json({ error: "Not found" }, 404);
   const listed = await env.DB.prepare(
-    "SELECT device, browser, place, ip, reported_seconds, pages, last_seen FROM visit_sessions ORDER BY last_seen DESC",
+    "SELECT device, browser, place, ip, reported_seconds, pages, last_seen, started_at FROM visit_sessions ORDER BY last_seen DESC",
   ).all<{
     device: string;
     browser: string;
@@ -159,21 +159,24 @@ async function visitLog(_request: Request, env: Env, url: URL) {
     reported_seconds: number;
     pages: string;
     last_seen: string;
+    started_at: string;
   }>();
   const selectedIp = url.searchParams.get("ip");
   if (selectedIp) {
-    const stays = listed.results.filter((visit) => visit.ip === selectedIp);
+    const stays = listed.results
+      .filter((visit) => visit.ip === selectedIp)
+      .sort((a, b) => (b.started_at || b.last_seen).localeCompare(a.started_at || a.last_seen));
     const title = stays[0] ? `${stays[0].device} · ${stays[0].browser}` : "Visitor";
     const rows = stays
       .map((visit, index) => {
-        const when = formatWhen(visit.last_seen);
+        const when = formatWhen(visit.started_at || visit.last_seen);
         return `<article class="row">
           <div>
             <strong>Visit ${stays.length - index}</strong>
             <p>${escapeHtml(formatStay(visit.reported_seconds || 0))}</p>
             ${visit.pages ? `<p>Pages: ${escapeHtml(visit.pages)}</p>` : ""}
           </div>
-          <time>${escapeHtml(when)}</time>
+          <time datetime="${escapeHtml(when.iso)}">${escapeHtml(when.date)}<br>${escapeHtml(when.time)}</time>
         </article>`;
       })
       .join("");
@@ -194,6 +197,7 @@ async function visitLog(_request: Request, env: Env, url: URL) {
     ip: string;
     visits: number;
     last_seen: string;
+    started_at: string;
   }>();
   for (const visit of listed.results) {
     const current = visitors.get(visit.ip);
@@ -205,6 +209,7 @@ async function visitLog(_request: Request, env: Env, url: URL) {
         ip: visit.ip,
         visits: 1,
         last_seen: visit.last_seen,
+        started_at: visit.started_at || visit.last_seen,
       });
     } else {
       current.visits += 1;
@@ -212,7 +217,7 @@ async function visitLog(_request: Request, env: Env, url: URL) {
   }
   const rows = [...visitors.values()]
     .map((visit) => {
-      const when = formatWhen(visit.last_seen);
+      const when = formatWhen(visit.started_at || visit.last_seen);
       const count = `${visit.visits} visit${visit.visits === 1 ? "" : "s"}`;
       const href = `/visits?key=${encodeURIComponent(key)}&ip=${encodeURIComponent(visit.ip)}`;
       return `<article class="row">
@@ -222,7 +227,7 @@ async function visitLog(_request: Request, env: Env, url: URL) {
           <p>IP: ${escapeHtml(visit.ip)}</p>
           <p><a href="${href}">${escapeHtml(count)}</a></p>
         </div>
-        <time>${escapeHtml(when)}</time>
+        <time datetime="${escapeHtml(when.iso)}">${escapeHtml(when.date)}<br>${escapeHtml(when.time)}</time>
       </article>`;
     })
     .join("");
@@ -230,11 +235,13 @@ async function visitLog(_request: Request, env: Env, url: URL) {
 }
 
 function formatWhen(value: string) {
-  return new Date(value).toLocaleTimeString("en-US", {
-    timeZone: "Asia/Manila",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const date = new Date(value);
+  const zone = "Asia/Manila";
+  return {
+    date: date.toLocaleDateString("en-US", { timeZone: zone, month: "short", day: "numeric", year: "numeric" }),
+    time: date.toLocaleTimeString("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }),
+    iso: date.toISOString(),
+  };
 }
 
 function page(title: string, body: string) {
@@ -254,7 +261,7 @@ function page(title: string, body: string) {
     .row p, .quiet { margin: 0.15rem 0; color: #5c534b; }
     a { color: #742433; }
     .back { margin: 0 0 0.8rem; }
-    time { color: #6d645c; white-space: nowrap; }
+    time { color: #6d645c; white-space: nowrap; text-align: right; }
     .empty { color: #6d645c; }
   </style>
 </head>
