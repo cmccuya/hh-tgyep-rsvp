@@ -75,6 +75,12 @@ export default {
     if (request.method === "GET" && url.pathname === "/notices") {
       return cors(await residentNotices(request, env));
     }
+    if (request.method === "GET" && url.pathname === "/board") {
+      return cors(await residentBoard(request, env));
+    }
+    if (request.method === "POST" && url.pathname === "/admin/posts") {
+      return cors(await savePost(request, env));
+    }
     if (request.method === "GET" && url.pathname === "/sign-ins") {
       return signInLog(request, env, url);
     }
@@ -415,40 +421,103 @@ async function logout(request: Request, env: Env) {
 async function residentNotices(request: Request, env: Env) {
   const account = await accountFromRequest(request, env);
   if (!account) return json({ error: "Sign in again." }, 401);
-  return json({
-    notices: [
-      {
-        tag: "Admin office",
-        title: "Admin office hours",
-        when: "Nov 10",
-        body: "The Residential & Facilities Management Office is open Monday to Friday, 8:00 AM to 5:00 PM, with lunch from 12:00 NN to 1:00 PM. Saturday is 8:00 AM to 12:00 NN. Sunday and holidays are closed.",
-      },
-      {
-        tag: "Water",
-        title: "Scheduled water interruption",
-        when: "Nov 5",
-        body: "On November 5, 2026, from 9:00 AM to 5:00 PM, water service was scheduled to pause for the water meter stubout relocation. Affected areas: Block 25 (Lots 1–46), Block 26, Block 32, Block 33, and Block 34. Water may look discolored when it returns. See Circular No. 2026-075.",
-      },
-      {
-        tag: "Holiday",
-        title: "Admin office closed for Undas",
-        when: "Nov 2",
-        body: "The Administration Office was closed on November 2, 2026 for All Souls’ Day, an additional special non-working day under Proclamation No. 1006. Regular office operations resumed on November 3. Urgent concerns go through the Security Office.",
-      },
-      {
-        tag: "Invitation",
-        title: "Paws, Pose & Win",
-        when: "Oct 24",
-        body: "The Magalang Grand Open House invited residents on October 24, 2026, 8:00 AM to 5:00 PM, at the retail area. Pet owners could join the costume activity, a complimentary treat, and the Facebook photo contest through November 7. The office number is 0953-802-7303.",
-      },
-      {
-        tag: "Pool",
-        title: "Swimming pool temporarily closed",
-        when: "Oct 2",
-        body: "The HHM swimming pool was closed until further notice after heavy rain, for water quality checks, cleaning, and maintenance. Questions go to the Residential Management Office at 0953-802-7303.",
-      },
-    ],
-  });
+  const posts = await loadPosts(env);
+  return json({ notices: posts.filter((post) => post.kind === "notice") });
+}
+
+async function residentBoard(request: Request, env: Env) {
+  const account = await accountFromRequest(request, env);
+  if (!account) return json({ error: "Sign in again." }, 401);
+  return json({ posts: await loadPosts(env) });
+}
+
+async function savePost(request: Request, env: Env) {
+  const admin = await adminFromRequest(request, env);
+  if (!admin) return json({ error: "Only an admin can post." }, 403);
+  let body: { action?: unknown; id?: unknown; kind?: unknown; tag?: unknown; title?: unknown; when?: unknown; body?: unknown };
+  try {
+    body = JSON.parse(await request.text()) as typeof body;
+  } catch {
+    return json({ error: "Check the post and try again." }, 400);
+  }
+  await ensurePosts(env);
+  const id = typeof body.id === "string" ? body.id.trim().slice(0, 80) : "";
+  if (body.action === "remove") {
+    if (!id) return json({ error: "Choose a post to take down." }, 400);
+    await env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(id).run();
+    return json({ posts: await loadPosts(env) });
+  }
+  const kind = body.kind === "notice" || body.kind === "event" || body.kind === "paper" ? body.kind : "";
+  const tag = typeof body.tag === "string" ? body.tag.trim().slice(0, 40) : "";
+  const title = typeof body.title === "string" ? body.title.trim().slice(0, 140) : "";
+  const when = typeof body.when === "string" ? body.when.trim().slice(0, 40) : "";
+  const message = typeof body.body === "string" ? body.body.trim().slice(0, 2000) : "";
+  if (!kind || !title || !message) return json({ error: "Add a title and a message." }, 400);
+  const now = new Date().toISOString();
+  if (id) {
+    const found = await env.DB.prepare("SELECT id FROM posts WHERE id = ?").bind(id).all<{ id: string }>();
+    if (!found.results[0]) return json({ error: "That post is not here." }, 404);
+    await env.DB.prepare("UPDATE posts SET kind = ?, tag = ?, title = ?, when_label = ?, body = ?, updated_at = ? WHERE id = ?")
+      .bind(kind, tag, title, when, message, now, id)
+      .run();
+  } else {
+    await env.DB.prepare(
+      "INSERT INTO posts (id, kind, tag, title, when_label, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(crypto.randomUUID(), kind, tag, title, when, message, now, now)
+      .run();
+  }
+  return json({ posts: await loadPosts(env) });
+}
+
+async function loadPosts(env: Env) {
+  await ensurePosts(env);
+  const found = await env.DB.prepare(
+    "SELECT id, kind, tag, title, when_label, body, created_at FROM posts ORDER BY created_at DESC",
+  ).all<{ id: string; kind: string; tag: string; title: string; when_label: string; body: string; created_at: string }>();
+  return found.results.map((post) => ({
+    id: post.id,
+    kind: post.kind === "event" || post.kind === "paper" ? post.kind : "notice",
+    tag: post.tag,
+    title: post.title,
+    when: post.when_label,
+    body: post.body,
+  }));
+}
+
+async function ensurePosts(env: Env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS posts (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      tag TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL,
+      when_label TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM posts").all<{ total: number }>();
+  if (count.results[0]?.total) return;
+  const seeds: [string, string, string, string, string, string, string][] = [
+    ["notice-hours", "notice", "Admin office", "Admin office hours", "Nov 10", "The Residential & Facilities Management Office is open Monday to Friday, 8:00 AM to 5:00 PM, with lunch from 12:00 NN to 1:00 PM. Saturday is 8:00 AM to 12:00 NN. Sunday and holidays are closed.", "2026-11-10T01:00:00.000Z"],
+    ["notice-water", "notice", "Water", "Scheduled water interruption", "Nov 5", "On November 5, 2026, from 9:00 AM to 5:00 PM, water service was scheduled to pause for the water meter stubout relocation. Affected areas: Block 25 (Lots 1–46), Block 26, Block 32, Block 33, and Block 34. Water may look discolored when it returns. See Circular No. 2026-075.", "2026-11-05T01:00:00.000Z"],
+    ["notice-undas", "notice", "Holiday", "Admin office closed for Undas", "Nov 2", "The Administration Office was closed on November 2, 2026 for All Souls’ Day, an additional special non-working day under Proclamation No. 1006. Regular office operations resumed on November 3. Urgent concerns go through the Security Office.", "2026-11-02T01:00:00.000Z"],
+    ["notice-paws", "notice", "Invitation", "Paws, Pose & Win", "Oct 24", "The Magalang Grand Open House invited residents on October 24, 2026, 8:00 AM to 5:00 PM, at the retail area. Pet owners could join the costume activity, a complimentary treat, and the Facebook photo contest through November 7. The office number is 0953-802-7303.", "2026-10-24T01:00:00.000Z"],
+    ["notice-pool", "notice", "Pool", "Swimming pool temporarily closed", "Oct 2", "The HHM swimming pool was closed until further notice after heavy rain, for water quality checks, cleaning, and maintenance. Questions go to the Residential Management Office at 0953-802-7303.", "2026-10-02T01:00:00.000Z"],
+    ["event-party", "event", "Club house", "Thanksgiving & Year-End Party", "Dec 19", "6:00 PM at the Hamana Homes Club House. One potluck dish and one gift per household. Games and prizes are planned for adults and kids.", "2026-12-19T10:00:00.000Z"],
+    ["paper-gathering", "paper", "Gathering", "Thanksgiving & Year-End Party", "", "Hamana Homes is hosting a Thanksgiving and year-end party, and we’d love everyone to be part of it.", "2026-12-01T03:00:00.000Z"],
+    ["paper-table", "paper", "Table", "Food & drinks", "", "Potluck style, with one pledge per household. We’ll coordinate dish sign-ups so the table has a good mix of food, drinks, and desserts.", "2026-12-01T02:00:00.000Z"],
+    ["paper-gift", "paper", "Exchange", "Gift exchange", "", "One gift per household. The exchange mechanics and a suggested price limit will follow.", "2026-12-01T01:00:00.000Z"],
+  ];
+  for (const [id, kind, tag, title, when, message, created] of seeds) {
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO posts (id, kind, tag, title, when_label, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(id, kind, tag, title, when, message, created, created)
+      .run();
+  }
 }
 
 async function accountFromRequest(request: Request, env: Env) {

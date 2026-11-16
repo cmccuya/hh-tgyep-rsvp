@@ -43,6 +43,17 @@ CREATE TABLE IF NOT EXISTS accounts (
   role TEXT NOT NULL DEFAULT 'resident'
 );
 
+CREATE TABLE IF NOT EXISTS posts (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  tag TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL,
+  when_label TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   email TEXT NOT NULL,

@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { event } from "@/lib/event";
 import { readReply } from "@/lib/reply";
 import { authHeader, portalApi, readHousehold, type Household } from "@/components/portal-gate";
+import { Desk, type Post } from "@/components/portal-desk";
 
-type Room = "home" | "notices" | "events" | "household" | "documents" | "residents";
+type Room = "home" | "notices" | "events" | "household" | "documents" | "desk" | "residents";
 
 type Resident = {
   email: string;
@@ -16,8 +17,6 @@ type Resident = {
   status: "pending" | "approved";
   role: "admin" | "resident";
 };
-
-type Notice = { tag: string; title: string; when: string; body: string };
 
 const rooms: { id: Room; label: string }[] = [
   { id: "home", label: "Home" },
@@ -48,7 +47,7 @@ export function PortalHome() {
   const [household, setHousehold] = useState<Household | null>(null);
   const [room, setRoom] = useState<Room>("home");
   const [reply, setReply] = useState<ReturnType<typeof readReply>>(null);
-  const [notices, setNotices] = useState<Notice[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [residents, setResidents] = useState<Resident[]>([]);
 
   useEffect(() => {
@@ -59,7 +58,7 @@ export function PortalHome() {
       return;
     }
     const me = new URL("/auth/me", base).href;
-    const board = new URL("/notices", base).href;
+    const board = new URL("/board", base).href;
     fetch(me, { headers: authHeader() })
       .then(async (response) => {
         if (!response.ok) throw new Error("signed out");
@@ -68,8 +67,8 @@ export function PortalHome() {
         setReply(readReply());
         const notes = await fetch(board, { headers: authHeader() });
         if (!notes.ok) throw new Error("signed out");
-        const body = (await notes.json()) as { notices?: Notice[] };
-        setNotices(body.notices || []);
+        const body = (await notes.json()) as { posts?: Post[] };
+        setPosts(body.posts || []);
         if (account.role === "admin") {
           const people = await fetch(new URL("/admin/accounts", base).href, { headers: authHeader() });
           if (people.ok) {
@@ -113,7 +112,14 @@ export function PortalHome() {
   if (!household) return <main className="portal waiting">Opening your gate…</main>;
 
   const first = household.name.split(" ")[0];
-  const lane = household.role === "admin" ? [...rooms, { id: "residents" as Room, label: "Residents" }] : rooms;
+  const lane =
+    household.role === "admin"
+      ? [...rooms, { id: "desk" as Room, label: "Desk" }, { id: "residents" as Room, label: "Residents" }]
+      : rooms;
+  const notices = posts.filter((post) => post.kind === "notice");
+  const events = posts.filter((post) => post.kind === "event");
+  const papers = posts.filter((post) => post.kind === "paper");
+  const party = events.find((post) => post.id === "event-party") || events[0];
   const waiting = residents.filter((person) => person.status !== "approved").length;
 
   return (
@@ -150,7 +156,7 @@ export function PortalHome() {
               <h1>{room === "notices" ? "Pinned for the village" : `${first}, the house is awake.`}</h1>
               <ul className="notes-list">
                 {notices.map((note) => (
-                  <li key={note.title}>
+                  <li key={note.id}>
                     <span>{note.tag}</span>
                     <time>{note.when}</time>
                     <strong>{note.title}</strong>
@@ -167,7 +173,7 @@ export function PortalHome() {
                   <p>Block and lot {household.blockLot}</p>
                   <p>Hamana Homes, Sto. Rosario</p>
                 </article>
-                <PartyCard replyComing={reply?.coming} />
+                <PartyCard post={party} replyComing={reply?.coming} />
               </div>
             ) : null}
           </div>
@@ -175,7 +181,14 @@ export function PortalHome() {
 
         {room === "events" ? (
           <div className="hearth-grid single">
-            <PartyCard replyComing={reply?.coming} large />
+            {events.length ? (
+              events.map((post) => <PartyCard key={post.id} post={post} replyComing={post.id === "event-party" ? reply?.coming : undefined} large />)
+            ) : (
+              <article className="letter">
+                <p className="eyebrow">Events</p>
+                <h1>Nothing is on the calendar.</h1>
+              </article>
+            )}
           </div>
         ) : null}
 
@@ -238,27 +251,26 @@ export function PortalHome() {
           </article>
         ) : null}
 
+        {room === "desk" ? <Desk posts={posts} onChange={setPosts} /> : null}
+
         {room === "documents" ? (
           <article className="letter">
             <p className="eyebrow">Village papers</p>
             <h1>What the club house is asking.</h1>
-            <ul className="notes-list">
-              <li>
-                <span>Gathering</span>
-                <strong>{event.title}</strong>
-                <p>{event.welcome}</p>
-              </li>
-              <li>
-                <span>Table</span>
-                <strong>{event.foodLabel}</strong>
-                <p>{event.food}</p>
-              </li>
-              <li>
-                <span>Exchange</span>
-                <strong>{event.giftLabel}</strong>
-                <p>{event.gift}</p>
-              </li>
-            </ul>
+            {papers.length ? (
+              <ul className="notes-list">
+                {papers.map((post) => (
+                  <li key={post.id}>
+                    <span>{post.tag}</span>
+                    {post.when ? <time>{post.when}</time> : null}
+                    <strong>{post.title}</strong>
+                    <p>{post.body}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Nothing is posted here yet.</p>
+            )}
           </article>
         ) : null}
       </section>
@@ -266,21 +278,26 @@ export function PortalHome() {
   );
 }
 
-function PartyCard({ replyComing, large = false }: { replyComing?: "yes" | "no"; large?: boolean }) {
+function PartyCard({ post, replyComing, large = false }: { post?: Post; replyComing?: "yes" | "no"; large?: boolean }) {
+  const when = post?.when || "Dec 19";
+  const [head, ...rest] = when.split(" ");
+  const party = !post || post.id === "event-party";
   return (
     <article className={large ? "ticket large" : "ticket"}>
       <p className="ticket-date">
-        <b>Dec</b>
-        19
+        <b>{head || "Dec"}</b>
+        {rest.join(" ") || "19"}
       </p>
       <div>
-        <p className="eyebrow">Club house</p>
-        <h2>{event.title}</h2>
-        <p>6:00 PM · Hamana Homes Club House</p>
-        <p className="ticket-state">
-          {replyComing === "yes" ? "This phone already said yes." : replyComing === "no" ? "This phone already declined." : "Your reply is still open."}
-        </p>
-        <Link href="/#rsvp">Open the invitation</Link>
+        <p className="eyebrow">{post?.tag || "Club house"}</p>
+        <h2>{post?.title || event.title}</h2>
+        <p>{post?.body || "6:00 PM · Hamana Homes Club House"}</p>
+        {party ? (
+          <p className="ticket-state">
+            {replyComing === "yes" ? "This phone already said yes." : replyComing === "no" ? "This phone already declined." : "Your reply is still open."}
+          </p>
+        ) : null}
+        {party ? <Link href="/#rsvp">Open the invitation</Link> : null}
       </div>
     </article>
   );
