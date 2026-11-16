@@ -902,6 +902,19 @@ input, textarea {
   padding: 0.55rem 0.9rem;
 }
 .roster span { background: #20382f; }
+.roster a { color: inherit; }
+.roster a.details {
+  flex: none;
+  border: 1px solid rgba(58, 42, 34, 0.16);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--berry-deep);
+  padding: 0.55rem 0.9rem;
+  text-decoration: none;
+}
+.household-file { padding: 1.6rem 1rem 3rem; }
+.household-file .letter { max-width: 720px; margin: 0 auto; }
+.household-file .facts a { color: inherit; }
 
 .desk-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.2rem 0 0.8rem; }
 .desk-tabs button {

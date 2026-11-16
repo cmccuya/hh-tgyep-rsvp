@@ -66,6 +66,9 @@ export default {
     if (request.method === "GET" && url.pathname === "/admin/accounts") {
       return cors(await listAccounts(request, env));
     }
+    if (request.method === "GET" && url.pathname === "/admin/account") {
+      return cors(await accountDetail(request, env, url));
+    }
     if (request.method === "POST" && url.pathname === "/admin/accounts") {
       return cors(await decideAccount(request, env));
     }
@@ -283,18 +286,19 @@ async function recordSignIn(request: Request, env: Env) {
 
 async function registerAccount(request: Request, env: Env) {
   const fields = await readAccountFields(request);
-  if (!fields) return json({ error: "Add your email, password, name, and block and lot." }, 400);
+  if (!fields) return json({ error: "Add your email, password, name, phone number, and block and lot." }, 400);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) return json({ error: "Use a real email address." }, 400);
   if (fields.password.length < 6) return json({ error: "Use at least 6 characters for the password." }, 400);
+  if (fields.phone.replace(/\D/g, "").length < 7) return json({ error: "Add a phone number." }, 400);
   await ensureAccounts(env);
   const existing = await env.DB.prepare("SELECT email FROM accounts WHERE email = ?").bind(fields.email).all<{ email: string }>();
   if (existing.results[0]) return json({ error: "That email already has an account." }, 409);
   const salt = [...crypto.getRandomValues(new Uint8Array(16))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   await env.DB.prepare(
-    `INSERT INTO accounts (email, name, block_lot, password_salt, password_hash, created_at, status, role)
-     VALUES (?, ?, ?, ?, ?, ?, 'pending', 'resident')`,
+    `INSERT INTO accounts (email, name, block_lot, phone, password_salt, password_hash, created_at, status, role)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'resident')`,
   )
-    .bind(fields.email, fields.name, fields.blockLot, salt, await hashPassword(fields.password, salt), new Date().toISOString())
+    .bind(fields.email, fields.name, fields.blockLot, fields.phone, salt, await hashPassword(fields.password, salt), new Date().toISOString())
     .run();
   return json({ ok: true });
 }
@@ -334,18 +338,36 @@ async function listAccounts(request: Request, env: Env) {
   const admin = await adminFromRequest(request, env);
   if (!admin) return json({ error: "Only an admin can see accounts." }, 403);
   const found = await env.DB.prepare(
-    "SELECT email, name, block_lot, status, role, created_at FROM accounts ORDER BY created_at DESC",
-  ).all<{ email: string; name: string; block_lot: string; status: string; role: string; created_at: string }>();
-  return json({
-    accounts: found.results.map((account) => ({
-      email: account.email,
-      name: account.name,
-      blockLot: account.block_lot,
-      status: account.status === "approved" ? "approved" : "pending",
-      role: account.role === "admin" ? "admin" : "resident",
-      createdAt: account.created_at,
-    })),
-  });
+    "SELECT email, name, block_lot, phone, status, role, created_at FROM accounts ORDER BY created_at DESC",
+  ).all<{ email: string; name: string; block_lot: string; phone: string; status: string; role: string; created_at: string }>();
+  return json({ accounts: found.results.map(publicAccount) });
+}
+
+async function accountDetail(request: Request, env: Env, url: URL) {
+  const admin = await adminFromRequest(request, env);
+  if (!admin) return json({ error: "Only an admin can see an account." }, 403);
+  const email = (url.searchParams.get("email") || "").trim().toLowerCase();
+  if (!email) return json({ error: "Choose a household." }, 400);
+  const found = await env.DB.prepare(
+    "SELECT email, name, block_lot, phone, status, role, created_at FROM accounts WHERE email = ?",
+  )
+    .bind(email)
+    .all<{ email: string; name: string; block_lot: string; phone: string; status: string; role: string; created_at: string }>();
+  const account = found.results[0];
+  if (!account) return json({ error: "That household is not here." }, 404);
+  return json({ account: publicAccount(account) });
+}
+
+function publicAccount(account: { email: string; name: string; block_lot: string; phone: string; status: string; role: string; created_at: string }) {
+  return {
+    email: account.email,
+    name: account.name,
+    phone: account.phone || "",
+    blockLot: account.block_lot,
+    status: account.status === "approved" ? "approved" : "pending",
+    role: account.role === "admin" ? "admin" : "resident",
+    createdAt: account.created_at,
+  };
 }
 
 async function decideAccount(request: Request, env: Env) {
@@ -371,36 +393,28 @@ async function decideAccount(request: Request, env: Env) {
     await env.DB.prepare("UPDATE accounts SET role = 'admin' WHERE email = ?").bind(email).run();
   }
   const updated = await env.DB.prepare(
-    "SELECT email, name, block_lot, status, role, created_at FROM accounts WHERE email = ?",
+    "SELECT email, name, block_lot, phone, status, role, created_at FROM accounts WHERE email = ?",
   )
     .bind(email)
-    .all<{ email: string; name: string; block_lot: string; status: string; role: string; created_at: string }>();
+    .all<{ email: string; name: string; block_lot: string; phone: string; status: string; role: string; created_at: string }>();
   const row = updated.results[0];
-  return json({
-    account: {
-      email: row.email,
-      name: row.name,
-      blockLot: row.block_lot,
-      status: row.status === "approved" ? "approved" : "pending",
-      role: row.role === "admin" ? "admin" : "resident",
-      createdAt: row.created_at,
-    },
-  });
+  return json({ account: publicAccount(row) });
 }
 
 async function readAccountFields(request: Request) {
-  let body: { email?: unknown; password?: unknown; name?: unknown; blockLot?: unknown };
+  let body: { email?: unknown; password?: unknown; name?: unknown; phone?: unknown; blockLot?: unknown };
   try {
-    body = JSON.parse(await request.text()) as { email?: unknown; password?: unknown; name?: unknown; blockLot?: unknown };
+    body = JSON.parse(await request.text()) as { email?: unknown; password?: unknown; name?: unknown; phone?: unknown; blockLot?: unknown };
   } catch {
     return null;
   }
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 160) : "";
   const password = typeof body.password === "string" ? body.password.slice(0, 200) : "";
   const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
+  const phone = typeof body.phone === "string" ? body.phone.trim().slice(0, 40) : "";
   const blockLot = typeof body.blockLot === "string" ? body.blockLot.trim().slice(0, 80) : "";
-  if (!email || !password || !name || !blockLot) return null;
-  return { email, password, name, blockLot };
+  if (!email || !password || !name || !phone || !blockLot) return null;
+  return { email, password, name, phone, blockLot };
 }
 
 async function currentAccount(request: Request, env: Env) {
@@ -553,6 +567,7 @@ async function ensureAccounts(env: Env) {
       email TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       block_lot TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
       password_salt TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -574,6 +589,11 @@ async function ensureAccounts(env: Env) {
   }
   try {
     await env.DB.prepare("ALTER TABLE accounts ADD COLUMN role TEXT NOT NULL DEFAULT 'resident'").run();
+  } catch {
+    /* The column is already there. */
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE accounts ADD COLUMN phone TEXT NOT NULL DEFAULT ''").run();
   } catch {
     /* The column is already there. */
   }

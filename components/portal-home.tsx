@@ -226,11 +226,16 @@ export function PortalHome() {
                 {[...residents].sort((a, b) => Number(a.status === "approved") - Number(b.status === "approved")).map((person) => (
                   <li key={person.email}>
                     <div>
-                      <strong>{person.name}</strong>
+                      <strong>
+                        <Link href={`/household/?email=${encodeURIComponent(person.email)}`}>{person.name}</Link>
+                      </strong>
                       <p>
                         {person.email} · {person.blockLot}
                       </p>
                     </div>
+                    <Link className="details" href={`/household/?email=${encodeURIComponent(person.email)}`}>
+                      Details
+                    </Link>
                     {person.status !== "approved" ? (
                       <button type="button" onClick={() => decide(person.email, "approve")}>
                         Approve

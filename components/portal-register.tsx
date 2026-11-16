@@ -8,6 +8,7 @@ export function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [blockLot, setBlockLot] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -15,8 +16,8 @@ export function Register() {
 
   async function ask(event: FormEvent) {
     event.preventDefault();
-    if (!email.trim() || !password || !name.trim() || !blockLot.trim()) {
-      setError("Add your email, password, name, and block and lot.");
+    if (!email.trim() || !password || !name.trim() || !phone.trim() || !blockLot.trim()) {
+      setError("Add your email, password, name, phone number, and block and lot.");
       return;
     }
     const url = portalApi("/auth/register");
@@ -34,6 +35,7 @@ export function Register() {
           email: email.trim().toLowerCase(),
           password,
           name: name.trim(),
+          phone: phone.trim(),
           blockLot: blockLot.trim(),
         }),
       });
@@ -87,6 +89,10 @@ export function Register() {
               <label>
                 Name
                 <input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
+              </label>
+              <label>
+                Phone number
+                <input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" placeholder="0917 000 0000" />
               </label>
               <label>
                 Block and lot
