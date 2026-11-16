@@ -878,6 +878,30 @@ input, textarea {
   font-size: 1rem;
 }
 .gate-error { margin: 0; color: var(--berry-deep); }
+.gate-switch { margin: 1.1rem 0 0; color: var(--ink-soft); }
+.gate-switch a { color: var(--berry-deep); }
+
+.roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.8rem; }
+.roster li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed rgba(58, 42, 34, 0.2);
+}
+.roster strong { display: block; }
+.roster p { margin: 0.15rem 0 0; color: var(--ink-soft); }
+.roster button, .roster span {
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--berry-deep);
+  color: #fff8ef;
+  padding: 0.55rem 0.9rem;
+}
+.roster span { background: #20382f; }
 
 .home {
   display: grid;

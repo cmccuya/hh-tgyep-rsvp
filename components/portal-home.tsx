@@ -5,9 +5,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { event } from "@/lib/event";
 import { readReply } from "@/lib/reply";
-import { authHeader, readHousehold, type Household } from "@/components/portal-gate";
+import { authHeader, portalApi, readHousehold, type Household } from "@/components/portal-gate";
 
-type Room = "home" | "notices" | "events" | "household" | "documents";
+type Room = "home" | "notices" | "events" | "household" | "documents" | "residents";
+
+type Resident = {
+  email: string;
+  name: string;
+  blockLot: string;
+  status: "pending" | "approved";
+  role: "admin" | "resident";
+};
 
 type Notice = { tag: string; title: string; when: string; body: string };
 
@@ -41,6 +49,7 @@ export function PortalHome() {
   const [room, setRoom] = useState<Room>("home");
   const [reply, setReply] = useState<ReturnType<typeof readReply>>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [residents, setResidents] = useState<Resident[]>([]);
 
   useEffect(() => {
     const saved = readHousehold();
@@ -61,6 +70,13 @@ export function PortalHome() {
         if (!notes.ok) throw new Error("signed out");
         const body = (await notes.json()) as { notices?: Notice[] };
         setNotices(body.notices || []);
+        if (account.role === "admin") {
+          const people = await fetch(new URL("/admin/accounts", base).href, { headers: authHeader() });
+          if (people.ok) {
+            const roster = (await people.json()) as { accounts?: Resident[] };
+            setResidents(roster.accounts || []);
+          }
+        }
       })
       .catch(() => {
         sessionStorage.removeItem("hamana-portal");
@@ -68,6 +84,21 @@ export function PortalHome() {
         router.replace("/login");
       });
   }, [router]);
+
+  async function decide(email: string, action: "approve" | "admin") {
+    const url = portalApi("/admin/accounts");
+    if (!url) return;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeader() },
+      body: JSON.stringify({ email, action }),
+    });
+    if (!response.ok) return;
+    const body = (await response.json()) as { account?: Resident };
+    const saved = body.account;
+    if (!saved) return;
+    setResidents((current) => current.map((person) => (person.email === email ? saved : person)));
+  }
 
   function leave() {
     const base = process.env.NEXT_PUBLIC_RSVP_URL;
@@ -82,16 +113,19 @@ export function PortalHome() {
   if (!household) return <main className="portal waiting">Opening your gate…</main>;
 
   const first = household.name.split(" ")[0];
+  const lane = household.role === "admin" ? [...rooms, { id: "residents" as Room, label: "Residents" }] : rooms;
+  const waiting = residents.filter((person) => person.status !== "approved").length;
 
   return (
     <main className="portal home">
       <aside className="lane">
         <p className="lane-brand">Hamana Homes</p>
         <nav>
-          {rooms.map((item) => (
+          {lane.map((item) => (
             <button key={item.id} type="button" className={room === item.id ? "on" : ""} onClick={() => setRoom(item.id)}>
               {item.label}
               {item.id === "notices" && notices.length ? <em>{notices.length}</em> : null}
+              {item.id === "residents" && waiting ? <em>{waiting}</em> : null}
             </button>
           ))}
         </nav>
@@ -167,6 +201,40 @@ export function PortalHome() {
                 <dd>{reply ? (reply.coming === "yes" ? `Coming${reply.guests ? `, ${reply.guests} guests` : ""}` : "Regretfully declines") : "Not sent from this phone yet"}</dd>
               </div>
             </dl>
+          </article>
+        ) : null}
+
+        {room === "residents" ? (
+          <article className="letter">
+            <p className="eyebrow">Admin</p>
+            <h1>Who may come in.</h1>
+            {residents.length ? (
+              <ul className="roster">
+                {[...residents].sort((a, b) => Number(a.status === "approved") - Number(b.status === "approved")).map((person) => (
+                  <li key={person.email}>
+                    <div>
+                      <strong>{person.name}</strong>
+                      <p>
+                        {person.email} · {person.blockLot}
+                      </p>
+                    </div>
+                    {person.status !== "approved" ? (
+                      <button type="button" onClick={() => decide(person.email, "approve")}>
+                        Approve
+                      </button>
+                    ) : person.role === "admin" ? (
+                      <span>{person.email === household.email ? "You" : "Admin"}</span>
+                    ) : (
+                      <button type="button" onClick={() => decide(person.email, "admin")}>
+                        Make admin
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No one is waiting at the gate.</p>
+            )}
           </article>
         ) : null}
 

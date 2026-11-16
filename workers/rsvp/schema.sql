@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   block_lot TEXT NOT NULL,
   password_salt TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'approved',
+  role TEXT NOT NULL DEFAULT 'resident'
 );
 
 CREATE TABLE IF NOT EXISTS sessions (

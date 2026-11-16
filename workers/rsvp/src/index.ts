@@ -54,11 +54,20 @@ export default {
     if (request.method === "POST" && url.pathname === "/sign-in") {
       return cors(await recordSignIn(request, env));
     }
+    if (request.method === "POST" && url.pathname === "/auth/register") {
+      return cors(await registerAccount(request, env));
+    }
     if (request.method === "POST" && url.pathname === "/auth/login") {
       return cors(await login(request, env));
     }
     if (request.method === "GET" && url.pathname === "/auth/me") {
       return cors(await currentAccount(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/admin/accounts") {
+      return cors(await listAccounts(request, env));
+    }
+    if (request.method === "POST" && url.pathname === "/admin/accounts") {
+      return cors(await decideAccount(request, env));
     }
     if (request.method === "POST" && url.pathname === "/auth/logout") {
       return cors(await logout(request, env));
@@ -266,6 +275,24 @@ async function recordSignIn(request: Request, env: Env) {
   return json({ ok: true });
 }
 
+async function registerAccount(request: Request, env: Env) {
+  const fields = await readAccountFields(request);
+  if (!fields) return json({ error: "Add your email, password, name, and block and lot." }, 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) return json({ error: "Use a real email address." }, 400);
+  if (fields.password.length < 6) return json({ error: "Use at least 6 characters for the password." }, 400);
+  await ensureAccounts(env);
+  const existing = await env.DB.prepare("SELECT email FROM accounts WHERE email = ?").bind(fields.email).all<{ email: string }>();
+  if (existing.results[0]) return json({ error: "That email already has an account." }, 409);
+  const salt = [...crypto.getRandomValues(new Uint8Array(16))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  await env.DB.prepare(
+    `INSERT INTO accounts (email, name, block_lot, password_salt, password_hash, created_at, status, role)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', 'resident')`,
+  )
+    .bind(fields.email, fields.name, fields.blockLot, salt, await hashPassword(fields.password, salt), new Date().toISOString())
+    .run();
+  return json({ ok: true });
+}
+
 async function login(request: Request, env: Env) {
   let body: { email?: unknown; password?: unknown };
   try {
@@ -278,20 +305,96 @@ async function login(request: Request, env: Env) {
   if (!email || !password) return json({ error: "Enter your email and password." }, 400);
   await ensureAccounts(env);
   const found = await env.DB.prepare(
-    "SELECT email, name, block_lot, password_salt, password_hash FROM accounts WHERE email = ?",
+    "SELECT email, name, block_lot, password_salt, password_hash, status, role FROM accounts WHERE email = ?",
   )
     .bind(email)
-    .all<{ email: string; name: string; block_lot: string; password_salt: string; password_hash: string }>();
+    .all<{ email: string; name: string; block_lot: string; password_salt: string; password_hash: string; status: string; role: string }>();
   const account = found.results[0];
   const hash = account ? await hashPassword(password, account.password_salt) : await hashPassword(password, "missing-account");
   if (!account || !safeEqual(hash, account.password_hash)) {
     return json({ error: "That email or password does not match an account." }, 401);
   }
+  if (account.status !== "approved") {
+    return json({ error: "An admin still needs to approve this account." }, 403);
+  }
   const token = [...crypto.getRandomValues(new Uint8Array(32))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
   await env.DB.prepare("INSERT INTO sessions (token_hash, email, expires_at) VALUES (?, ?, ?)").bind(await sha256(token), email, expires).run();
   await saveSignIn(request, env, account.name, account.block_lot);
-  return json({ token, name: account.name, email: account.email, blockLot: account.block_lot });
+  return json({ token, name: account.name, email: account.email, blockLot: account.block_lot, role: account.role === "admin" ? "admin" : "resident" });
+}
+
+async function listAccounts(request: Request, env: Env) {
+  const admin = await adminFromRequest(request, env);
+  if (!admin) return json({ error: "Only an admin can see accounts." }, 403);
+  const found = await env.DB.prepare(
+    "SELECT email, name, block_lot, status, role, created_at FROM accounts ORDER BY created_at DESC",
+  ).all<{ email: string; name: string; block_lot: string; status: string; role: string; created_at: string }>();
+  return json({
+    accounts: found.results.map((account) => ({
+      email: account.email,
+      name: account.name,
+      blockLot: account.block_lot,
+      status: account.status === "approved" ? "approved" : "pending",
+      role: account.role === "admin" ? "admin" : "resident",
+      createdAt: account.created_at,
+    })),
+  });
+}
+
+async function decideAccount(request: Request, env: Env) {
+  const admin = await adminFromRequest(request, env);
+  if (!admin) return json({ error: "Only an admin can do that." }, 403);
+  let body: { email?: unknown; action?: unknown };
+  try {
+    body = JSON.parse(await request.text()) as { email?: unknown; action?: unknown };
+  } catch {
+    return json({ error: "Check the account and try again." }, 400);
+  }
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const action = body.action === "approve" || body.action === "admin" ? body.action : "";
+  if (!email || !action) return json({ error: "Check the account and try again." }, 400);
+  if (action === "admin" && email === admin.email) return json({ error: "You are already an admin." }, 400);
+  const found = await env.DB.prepare("SELECT email, status FROM accounts WHERE email = ?").bind(email).all<{ email: string; status: string }>();
+  const account = found.results[0];
+  if (!account) return json({ error: "That account is not here." }, 404);
+  if (action === "approve") {
+    await env.DB.prepare("UPDATE accounts SET status = 'approved' WHERE email = ?").bind(email).run();
+  } else {
+    if (account.status !== "approved") return json({ error: "Approve this household first." }, 400);
+    await env.DB.prepare("UPDATE accounts SET role = 'admin' WHERE email = ?").bind(email).run();
+  }
+  const updated = await env.DB.prepare(
+    "SELECT email, name, block_lot, status, role, created_at FROM accounts WHERE email = ?",
+  )
+    .bind(email)
+    .all<{ email: string; name: string; block_lot: string; status: string; role: string; created_at: string }>();
+  const row = updated.results[0];
+  return json({
+    account: {
+      email: row.email,
+      name: row.name,
+      blockLot: row.block_lot,
+      status: row.status === "approved" ? "approved" : "pending",
+      role: row.role === "admin" ? "admin" : "resident",
+      createdAt: row.created_at,
+    },
+  });
+}
+
+async function readAccountFields(request: Request) {
+  let body: { email?: unknown; password?: unknown; name?: unknown; blockLot?: unknown };
+  try {
+    body = JSON.parse(await request.text()) as { email?: unknown; password?: unknown; name?: unknown; blockLot?: unknown };
+  } catch {
+    return null;
+  }
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 160) : "";
+  const password = typeof body.password === "string" ? body.password.slice(0, 200) : "";
+  const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
+  const blockLot = typeof body.blockLot === "string" ? body.blockLot.trim().slice(0, 80) : "";
+  if (!email || !password || !name || !blockLot) return null;
+  return { email, password, name, blockLot };
 }
 
 async function currentAccount(request: Request, env: Env) {
@@ -353,15 +456,26 @@ async function accountFromRequest(request: Request, env: Env) {
   if (!token) return null;
   await ensureAccounts(env);
   const found = await env.DB.prepare(
-    `SELECT accounts.email, accounts.name, accounts.block_lot
+    `SELECT accounts.email, accounts.name, accounts.block_lot, accounts.role, accounts.status
      FROM sessions JOIN accounts ON accounts.email = sessions.email
      WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
   )
     .bind(await sha256(token), new Date().toISOString())
-    .all<{ email: string; name: string; block_lot: string }>();
+    .all<{ email: string; name: string; block_lot: string; role: string; status: string }>();
   const account = found.results[0];
-  if (!account) return null;
-  return { email: account.email, name: account.name, blockLot: account.block_lot };
+  if (!account || account.status !== "approved") return null;
+  return {
+    email: account.email,
+    name: account.name,
+    blockLot: account.block_lot,
+    role: account.role === "admin" ? "admin" : "resident",
+  };
+}
+
+async function adminFromRequest(request: Request, env: Env) {
+  const account = await accountFromRequest(request, env);
+  if (!account || account.role !== "admin") return null;
+  return account;
 }
 
 async function ensureAccounts(env: Env) {
@@ -372,7 +486,9 @@ async function ensureAccounts(env: Env) {
       block_lot TEXT NOT NULL,
       password_salt TEXT NOT NULL,
       password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'approved',
+      role TEXT NOT NULL DEFAULT 'resident'
     )`,
   ).run();
   await env.DB.prepare(
@@ -382,6 +498,24 @@ async function ensureAccounts(env: Env) {
       expires_at TEXT NOT NULL
     )`,
   ).run();
+  try {
+    await env.DB.prepare("ALTER TABLE accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'").run();
+  } catch {
+    /* The column is already there. */
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE accounts ADD COLUMN role TEXT NOT NULL DEFAULT 'resident'").run();
+  } catch {
+    /* The column is already there. */
+  }
+  const keeper = await env.DB.prepare("SELECT role FROM accounts WHERE email = ?")
+    .bind("cinderellacuya@gmail.com")
+    .all<{ role: string }>();
+  if (keeper.results[0] && keeper.results[0].role !== "admin") {
+    await env.DB.prepare("UPDATE accounts SET role = 'admin', status = 'approved' WHERE email = ?")
+      .bind("cinderellacuya@gmail.com")
+      .run();
+  }
 }
 
 async function hashPassword(password: string, salt: string) {

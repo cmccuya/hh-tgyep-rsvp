@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 const PROFILE_KEY = "hamana-portal";
@@ -10,6 +11,7 @@ export type Household = {
   name: string;
   blockLot: string;
   email: string;
+  role?: "admin" | "resident";
 };
 
 export function readHousehold(): Household | null {
@@ -30,7 +32,7 @@ export function authHeader(): Record<string, string> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
-function api(path: string) {
+export function portalApi(path: string) {
   const base = process.env.NEXT_PUBLIC_RSVP_URL;
   if (!base) return "";
   return new URL(path, base).href;
@@ -50,7 +52,7 @@ export function Gate() {
       setError("Enter your email and password.");
       return;
     }
-    const url = api("/auth/login");
+    const url = portalApi("/auth/login");
     if (!url) {
       setError("The gate is not connected yet.");
       return;
@@ -63,7 +65,14 @@ export function Gate() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: address, password }),
       });
-      const body = (await response.json()) as { token?: string; name?: string; blockLot?: string; email?: string; error?: string };
+      const body = (await response.json()) as {
+        token?: string;
+        name?: string;
+        blockLot?: string;
+        email?: string;
+        role?: "admin" | "resident";
+        error?: string;
+      };
       if (!response.ok || !body.token || !body.name || !body.blockLot) {
         setError(body.error || "That email or password does not match an account.");
         return;
@@ -71,7 +80,7 @@ export function Gate() {
       sessionStorage.setItem(TOKEN_KEY, body.token);
       sessionStorage.setItem(
         PROFILE_KEY,
-        JSON.stringify({ name: body.name, blockLot: body.blockLot, email: body.email || address }),
+        JSON.stringify({ name: body.name, blockLot: body.blockLot, email: body.email || address, role: body.role || "resident" }),
       );
       router.push("/dashboard");
     } catch {
@@ -109,6 +118,9 @@ export function Gate() {
           {error ? <p className="gate-error">{error}</p> : null}
           <button type="submit" disabled={pending}>{pending ? "Checking…" : "Sign in"}</button>
         </form>
+        <p className="gate-switch">
+          New here? <Link href="/register">Ask for an account</Link>
+        </p>
       </section>
     </main>
   );
