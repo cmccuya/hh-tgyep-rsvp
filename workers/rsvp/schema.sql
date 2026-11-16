@@ -31,3 +31,14 @@ CREATE TABLE IF NOT EXISTS visit_sessions (
   last_seen TEXT NOT NULL DEFAULT '',
   started_at TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS sign_ins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  block_lot TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  device TEXT NOT NULL,
+  browser TEXT NOT NULL,
+  place TEXT NOT NULL,
+  signed_in_at TEXT NOT NULL
+);

@@ -36,6 +36,16 @@ export function Gate() {
       return;
     }
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(household));
+    const rsvpUrl = process.env.NEXT_PUBLIC_RSVP_URL;
+    if (rsvpUrl) {
+      const signInUrl = new URL("/sign-in", rsvpUrl).href;
+      fetch(signInUrl, {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: JSON.stringify(household),
+        keepalive: true,
+      }).catch(() => undefined);
+    }
     router.push("/dashboard");
   }
 

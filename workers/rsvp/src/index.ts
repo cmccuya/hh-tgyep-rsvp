@@ -51,6 +51,12 @@ export default {
     if (request.method === "GET" && url.pathname === "/visits") {
       return visitLog(request, env, url);
     }
+    if (request.method === "POST" && url.pathname === "/sign-in") {
+      return cors(await recordSignIn(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/sign-ins") {
+      return signInLog(request, env, url);
+    }
     if (request.method !== "POST" || url.pathname !== "/rsvp") {
       return cors(json({ error: "Not found" }, 404));
     }
@@ -182,7 +188,7 @@ async function visitLog(_request: Request, env: Env, url: URL) {
       .join("");
     return page(
       "Hamana Homes Visitor",
-      `<p class="back"><a href="/visits?key=${encodeURIComponent(key)}">Back to visitor logs</a></p>
+      `${logNav(key, "visits")}<p class="back"><a href="/visits?key=${encodeURIComponent(key)}">Back to visitor logs</a></p>
        <h1>${escapeHtml(title)}</h1>
        <p class="quiet">${escapeHtml(stays[0]?.place || "Unknown place")}</p>
        <p class="quiet">IP: ${escapeHtml(selectedIp)}</p>
@@ -231,7 +237,127 @@ async function visitLog(_request: Request, env: Env, url: URL) {
       </article>`;
     })
     .join("");
-  return page("Hamana Homes Visitor Logs", `<h1>Hamana Homes Visitor Logs</h1>${rows || '<p class="empty">No visits yet.</p>'}`);
+  return page("Hamana Homes Visitor Logs", `${logNav(key, "visits")}<h1>Hamana Homes Visitor Logs</h1>${rows || '<p class="empty">No visits yet.</p>'}`);
+}
+
+async function recordSignIn(request: Request, env: Env) {
+  let body: { name?: unknown; blockLot?: unknown };
+  try {
+    body = JSON.parse(await request.text()) as { name?: unknown; blockLot?: unknown };
+  } catch {
+    return json({ error: "Check the sign-in and try again." }, 400);
+  }
+  const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
+  const blockLot = typeof body.blockLot === "string" ? body.blockLot.trim().slice(0, 80) : "";
+  if (!name || !blockLot) return json({ error: "Add a name and a block and lot." }, 400);
+  const ip = request.headers.get("cf-connecting-ip") || "Unknown";
+  const { device, browser } = describeAgent(request.headers.get("user-agent") || "");
+  const cf = (request as Request & { cf?: { city?: string; region?: string; country?: string } }).cf;
+  const place = [cf?.city, cf?.region || cf?.country].filter(Boolean).join(", ") || "Unknown";
+  await ensureSignIns(env);
+  await env.DB.prepare(
+    `INSERT INTO sign_ins (name, block_lot, ip, device, browser, place, signed_in_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(name, blockLot, ip, device, browser, place, new Date().toISOString())
+    .run();
+  return json({ ok: true });
+}
+
+async function ensureSignIns(env: Env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS sign_ins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      block_lot TEXT NOT NULL,
+      ip TEXT NOT NULL,
+      device TEXT NOT NULL,
+      browser TEXT NOT NULL,
+      place TEXT NOT NULL,
+      signed_in_at TEXT NOT NULL
+    )`,
+  ).run();
+}
+
+async function signInLog(_request: Request, env: Env, url: URL) {
+  const key = url.searchParams.get("key") || "";
+  if (!env.VISITS_KEY || key !== env.VISITS_KEY) return json({ error: "Not found" }, 404);
+  await ensureSignIns(env);
+  const listed = await env.DB.prepare(
+    "SELECT name, block_lot, ip, device, browser, place, signed_in_at FROM sign_ins ORDER BY signed_in_at DESC",
+  ).all<{
+    name: string;
+    block_lot: string;
+    ip: string;
+    device: string;
+    browser: string;
+    place: string;
+    signed_in_at: string;
+  }>();
+  const selected = url.searchParams.get("household");
+  if (selected) {
+    const stays = listed.results.filter((signIn) => blockKey(signIn.block_lot) === selected);
+    const title = stays[0] ? stays[0].name : "Household";
+    const rows = stays
+      .map((signIn, index) => {
+        const when = formatWhen(signIn.signed_in_at);
+        return `<article class="row">
+          <div>
+            <strong>Sign-in ${stays.length - index}</strong>
+            <p>${escapeHtml(signIn.name)} · ${escapeHtml(signIn.block_lot)}</p>
+            <p>${escapeHtml(signIn.device)} · ${escapeHtml(signIn.browser)}</p>
+            <p>${escapeHtml(signIn.place)}</p>
+          </div>
+          <time datetime="${escapeHtml(when.iso)}">${escapeHtml(when.date)}<br>${escapeHtml(when.time)}</time>
+        </article>`;
+      })
+      .join("");
+    return page(
+      "Hamana Homes Sign-in",
+      `${logNav(key, "sign-ins")}
+       <p class="back"><a href="/sign-ins?key=${encodeURIComponent(key)}">Back to sign-ins</a></p>
+       <h1>${escapeHtml(title)}</h1>
+       <p class="quiet">${escapeHtml(stays[0]?.block_lot || "Unknown lot")}</p>
+       ${rows || '<p class="empty">No sign-ins for this household.</p>'}`,
+    );
+  }
+
+  const households = new Map<string, { name: string; blockLot: string; count: number; signedInAt: string }>();
+  for (const signIn of listed.results) {
+    const lot = blockKey(signIn.block_lot);
+    const current = households.get(lot);
+    if (!current) {
+      households.set(lot, { name: signIn.name, blockLot: signIn.block_lot, count: 1, signedInAt: signIn.signed_in_at });
+    } else {
+      current.count += 1;
+    }
+  }
+  const rows = [...households.entries()]
+    .map(([lot, household]) => {
+      const when = formatWhen(household.signedInAt);
+      const count = `${household.count} sign-in${household.count === 1 ? "" : "s"}`;
+      const href = `/sign-ins?key=${encodeURIComponent(key)}&household=${encodeURIComponent(lot)}`;
+      return `<article class="row">
+        <div>
+          <strong>${escapeHtml(household.name)}</strong>
+          <p>${escapeHtml(household.blockLot)}</p>
+          <p><a href="${href}">${escapeHtml(count)}</a></p>
+        </div>
+        <time datetime="${escapeHtml(when.iso)}">${escapeHtml(when.date)}<br>${escapeHtml(when.time)}</time>
+      </article>`;
+    })
+    .join("");
+  return page(
+    "Hamana Homes Sign-ins",
+    `${logNav(key, "sign-ins")}<h1>Hamana Homes Sign-ins</h1>${rows || '<p class="empty">No one has signed in yet.</p>'}`,
+  );
+}
+
+function logNav(key: string, current: "visits" | "sign-ins") {
+  const query = `key=${encodeURIComponent(key)}`;
+  const visits = current === "visits" ? "Invitation visits" : `<a href="/visits?${query}">Invitation visits</a>`;
+  const signIns = current === "sign-ins" ? "Sign-ins" : `<a href="/sign-ins?${query}">Sign-ins</a>`;
+  return `<p class="back">${visits} · ${signIns}</p>`;
 }
 
 function formatWhen(value: string) {
